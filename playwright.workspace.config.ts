@@ -1,7 +1,12 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: ["workspace.spec.ts", "workspace-retry.spec.ts", "main-app.spec.ts"],
+  testMatch: [
+    "workspace.spec.ts",
+    "workspace-retry.spec.ts",
+    "main-app.spec.ts",
+    "main-features.spec.ts",
+  ],
   workers: 1,
   timeout: 45000,
   expect: { timeout: 10000 },

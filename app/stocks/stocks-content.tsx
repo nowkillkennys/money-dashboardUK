@@ -1,4 +1,6 @@
 "use client";
+import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
+import { AuthenticatedInvestments } from "./authenticated-investments";
 import { TransactionEditDialog, EditField } from "../components/transaction-edit-dialog";
 
 import { usePathname } from "next/navigation";
@@ -66,8 +68,16 @@ interface Quote {
 }
 
 const COLORS = [
-  "#4f6edb", "#6581c3", "#4f8f7e", "#d4875f", "#c45f5f",
-  "#bc7297", "#6879ad", "#478596", "#b66f7f", "#568ba1",
+  "#4f6edb",
+  "#6581c3",
+  "#4f8f7e",
+  "#d4875f",
+  "#c45f5f",
+  "#bc7297",
+  "#6879ad",
+  "#478596",
+  "#b66f7f",
+  "#568ba1",
 ];
 const CHART_AXIS_COLOR = "var(--text-secondary)";
 const CHART_GRID_COLOR = "color-mix(in srgb, var(--text-secondary) 28%, transparent)";
@@ -80,7 +90,7 @@ const CHART_CURSOR = "var(--bg-elevated)";
 /* ------------------------------------------------------------------ */
 /*  Component                                                         */
 /* ------------------------------------------------------------------ */
-export function StocksContent() {
+function OriginalStocksContent() {
   const pathname = usePathname();
   const demo = pathname.startsWith("/demo");
   const { fx } = useMoneyFx();
@@ -99,8 +109,11 @@ export function StocksContent() {
   const m = (v: number) => (showBalances ? formatMoney(v, currency) : HIDDEN_BALANCE);
   const norm = (c: unknown): CurrencyCode =>
     c === "GBP" || c === "EUR" || c === "CAD" || c === "USD" || c === "EGP" ? c : "USD";
-  const fxBetween = useCallback((from: CurrencyCode, to: CurrencyCode): number =>
-    convertCurrency(1, from, to, demo ? DEMO_FX : fx), [fx, demo]);
+  const fxBetween = useCallback(
+    (from: CurrencyCode, to: CurrencyCode): number =>
+      convertCurrency(1, from, to, demo ? DEMO_FX : fx),
+    [fx, demo]
+  );
 
   // Modal state
   const [showAdd, setShowAdd] = useState(false);
@@ -135,28 +148,48 @@ export function StocksContent() {
       await updateHolding(id, { shares: sh, cost_basis: cb });
       await refresh();
       setInlineHoldingId(null);
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Holdings sorting
   const [hSortKey, setHSortKey] = useState<"symbol" | "shares" | "value" | "gain">("value");
   const [hSortDir, setHSortDir] = useState<"asc" | "desc">("desc");
   const toggleHSort = (key: typeof hSortKey) => {
-    if (hSortKey === key) setHSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setHSortKey(key); setHSortDir("desc"); }
+    if (hSortKey === key) setHSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setHSortKey(key);
+      setHSortDir("desc");
+    }
   };
   const HSortIcon = ({ col }: { col: typeof hSortKey }) =>
-    hSortKey === col ? (hSortDir === "asc" ? <ArrowUp className="ml-1 inline h-3 w-3" /> : <ArrowDown className="ml-1 inline h-3 w-3" />) : null;
+    hSortKey === col ? (
+      hSortDir === "asc" ? (
+        <ArrowUp className="ml-1 inline h-3 w-3" />
+      ) : (
+        <ArrowDown className="ml-1 inline h-3 w-3" />
+      )
+    ) : null;
 
   // Dividends sorting
   const [dSortKey, setDSortKey] = useState<"date" | "symbol" | "amount">("date");
   const [dSortDir, setDSortDir] = useState<"asc" | "desc">("desc");
   const toggleDSort = (key: typeof dSortKey) => {
-    if (dSortKey === key) setDSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setDSortKey(key); setDSortDir(key === "date" ? "desc" : "asc"); }
+    if (dSortKey === key) setDSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setDSortKey(key);
+      setDSortDir(key === "date" ? "desc" : "asc");
+    }
   };
   const DSortIcon = ({ col }: { col: typeof dSortKey }) =>
-    dSortKey === col ? (dSortDir === "asc" ? <ArrowUp className="ml-1 inline h-3 w-3" /> : <ArrowDown className="ml-1 inline h-3 w-3" />) : null;
+    dSortKey === col ? (
+      dSortDir === "asc" ? (
+        <ArrowUp className="ml-1 inline h-3 w-3" />
+      ) : (
+        <ArrowDown className="ml-1 inline h-3 w-3" />
+      )
+    ) : null;
 
   // Inline dividend edit state
   const [inlineDivId, setInlineDivId] = useState<string | null>(null);
@@ -178,10 +211,17 @@ export function StocksContent() {
     if (isNaN(amt) || amt <= 0) return;
     setSaving(true);
     try {
-      await updateDividend(id, { amount: amt, date: editDivDate, reinvested: editDivReinvested, notes: editDivNotes.trim() || null });
+      await updateDividend(id, {
+        amount: amt,
+        date: editDivDate,
+        reinvested: editDivReinvested,
+        notes: editDivNotes.trim() || null,
+      });
       await refresh();
       setInlineDivId(null);
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Dividend modal state
@@ -262,12 +302,14 @@ export function StocksContent() {
       const marketValue = h.shares * price;
       // Cash never has gains — cost basis is in native currency
       const costCur: CurrencyCode = norm(h.cost_currency);
-      const costInCurrency = isCash
-        ? marketValue
-        : h.cost_basis * fxBetween(costCur, currency);
+      const costInCurrency = isCash ? marketValue : h.cost_basis * fxBetween(costCur, currency);
       const gain = isCash ? 0 : marketValue - costInCurrency;
-      const gainPercent = isCash ? 0 : (costInCurrency > 0 ? (gain / costInCurrency) * 100 : 0);
-      const dayChange = isCash ? 0 : (quote ? h.shares * quote.change * fxBetween(quoteCurrency, currency) : 0);
+      const gainPercent = isCash ? 0 : costInCurrency > 0 ? (gain / costInCurrency) * 100 : 0;
+      const dayChange = isCash
+        ? 0
+        : quote
+          ? h.shares * quote.change * fxBetween(quoteCurrency, currency)
+          : 0;
       const dayChangePercent = isCash ? 0 : (quote?.changePercent ?? 0);
       return {
         ...h,
@@ -285,19 +327,12 @@ export function StocksContent() {
     });
   }, [holdings, quotes, currency, fxBetween]);
 
-  const totalMarketValue = holdingsWithPrices.reduce(
-    (s, h) => s + h.marketValue, 0
-  );
-  const totalCostBasis = holdingsWithPrices.reduce(
-    (s, h) => s + h.costInCurrency, 0
-  );
-  const missingPrices = holdingsWithPrices.some(h => !h.hasPrice);
+  const totalMarketValue = holdingsWithPrices.reduce((s, h) => s + h.marketValue, 0);
+  const totalCostBasis = holdingsWithPrices.reduce((s, h) => s + h.costInCurrency, 0);
+  const missingPrices = holdingsWithPrices.some((h) => !h.hasPrice);
   const totalGain = totalMarketValue - totalCostBasis;
-  const totalGainPercent =
-    totalCostBasis > 0 ? (totalGain / totalCostBasis) * 100 : 0;
-  const totalDayChange = holdingsWithPrices.reduce(
-    (s, h) => s + h.dayChange, 0
-  );
+  const totalGainPercent = totalCostBasis > 0 ? (totalGain / totalCostBasis) * 100 : 0;
+  const totalDayChange = holdingsWithPrices.reduce((s, h) => s + h.dayChange, 0);
 
   // Group by account for per-account summaries
   const byAccount = useMemo(() => {
@@ -372,10 +407,19 @@ export function StocksContent() {
     e.preventDefault();
     setFormError("");
     const sym = symbol.toUpperCase().trim();
-    if (!sym) { setFormError("Symbol is required"); return; }
-    if (!accountId) { setFormError("Select an account"); return; }
+    if (!sym) {
+      setFormError("Symbol is required");
+      return;
+    }
+    if (!accountId) {
+      setFormError("Select an account");
+      return;
+    }
     const sh = parseFloat(shares);
-    if (isNaN(sh) || sh <= 0) { setFormError("Enter valid shares"); return; }
+    if (isNaN(sh) || sh <= 0) {
+      setFormError("Enter valid shares");
+      return;
+    }
     const cb = parseFloat(costBasis) || 0;
 
     setSaving(true);
@@ -402,9 +446,15 @@ export function StocksContent() {
     if (!editing) return;
     setFormError("");
     const sym = symbol.toUpperCase().trim();
-    if (!sym) { setFormError("Symbol is required"); return; }
+    if (!sym) {
+      setFormError("Symbol is required");
+      return;
+    }
     const sh = parseFloat(shares);
-    if (isNaN(sh) || sh <= 0) { setFormError("Enter valid shares"); return; }
+    if (isNaN(sh) || sh <= 0) {
+      setFormError("Enter valid shares");
+      return;
+    }
     const cb = parseFloat(costBasis) || 0;
 
     setSaving(true);
@@ -454,7 +504,7 @@ export function StocksContent() {
       .reduce((s, d) => s + d.amount * fxBetween(d.currency, currency), 0);
   }, [dividends, currency, fxBetween]);
 
-  const openDividendModal = (h?: typeof holdingsWithPrices[0]) => {
+  const openDividendModal = (h?: (typeof holdingsWithPrices)[0]) => {
     setDivSymbol(h?.sym ?? "");
     setDivHoldingId(h?.id ?? "");
     setDivAmount("");
@@ -467,9 +517,15 @@ export function StocksContent() {
   const handleAddDividend = async (e: React.FormEvent) => {
     e.preventDefault();
     setDivError("");
-    if (!divHoldingId) { setDivError("Select a holding"); return; }
+    if (!divHoldingId) {
+      setDivError("Select a holding");
+      return;
+    }
     const amt = parseFloat(divAmount);
-    if (isNaN(amt) || amt <= 0) { setDivError("Enter a valid amount"); return; }
+    if (isNaN(amt) || amt <= 0) {
+      setDivError("Enter a valid amount");
+      return;
+    }
 
     const holding = holdings.find((h) => h.id === divHoldingId);
     setDivSaving(true);
@@ -508,14 +564,14 @@ export function StocksContent() {
     );
   }
 
-  const holdingForm = (
-    onSubmit: (e: React.FormEvent) => void,
-    submitLabel: string
-  ) => (
+  const holdingForm = (onSubmit: (e: React.FormEvent) => void, submitLabel: string) => (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-1">
+          <label
+            className="mb-1 block text-xs font-medium text-text-secondary"
+            htmlFor="stocks-field-1"
+          >
             Symbol
           </label>
           <input
@@ -523,17 +579,22 @@ export function StocksContent() {
             value={symbol}
             onChange={(e) => setSymbol(e.target.value.toUpperCase())}
             placeholder="AAPL, VOO, GOLD, CASH, CASHCAD..."
-            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple font-mono" id="stocks-field-1"
+            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple font-mono"
+            id="stocks-field-1"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-2">
+          <label
+            className="mb-1 block text-xs font-medium text-text-secondary"
+            htmlFor="stocks-field-2"
+          >
             Account
           </label>
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
-            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="stocks-field-2"
+            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+            id="stocks-field-2"
           >
             <option value="">Select account…</option>
             {investingAccounts.map((a) => (
@@ -546,7 +607,10 @@ export function StocksContent() {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-3">
+          <label
+            className="mb-1 block text-xs font-medium text-text-secondary"
+            htmlFor="stocks-field-3"
+          >
             Shares
           </label>
           <input
@@ -555,7 +619,8 @@ export function StocksContent() {
             value={shares}
             onChange={(e) => setShares(e.target.value)}
             placeholder="10"
-            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="stocks-field-3"
+            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+            id="stocks-field-3"
           />
         </div>
         <div>
@@ -578,16 +643,14 @@ export function StocksContent() {
             >
               <option value="USD">USD</option>
               <option value="GBP">GBP</option>
-                <option value="EUR">EUR</option>
-                <option value="CAD">CAD</option>
+              <option value="EUR">EUR</option>
+              <option value="CAD">CAD</option>
             </select>
           </div>
         </div>
       </div>
       {formError && (
-        <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-          {formError}
-        </p>
+        <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</p>
       )}
       <div className="flex gap-3 pt-2">
         <button
@@ -616,54 +679,56 @@ export function StocksContent() {
   return (
     <>
       <div data-tour="stocks-header">
-      <PageHeader
-        title="Stocks & Holdings"
-        description={demo ? "Synthetic investment cash only · fixed illustrative FX · no live prices" : "Track your investment portfolio"}
-        action={
-          <div className="flex items-center gap-2">
-            {/* USD / GBP toggle */}
-            <div className="inline-flex rounded-xl border border-border-subtle overflow-hidden text-xs font-medium">
+        <PageHeader
+          title="Stocks & Holdings"
+          description={
+            demo
+              ? "Synthetic investment cash only · fixed illustrative FX · no live prices"
+              : "Track your investment portfolio"
+          }
+          action={
+            <div className="flex items-center gap-2">
+              {/* USD / GBP toggle */}
+              <div className="inline-flex rounded-xl border border-border-subtle overflow-hidden text-xs font-medium">
+                <button
+                  onClick={() => setCurrency("USD")}
+                  className={`px-3 py-2 transition ${
+                    currency === "USD"
+                      ? "bg-accent-purple text-white"
+                      : "bg-bg-secondary text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  USD
+                </button>
+                <button
+                  onClick={() => setCurrency("GBP")}
+                  className={`px-3 py-2 transition ${
+                    currency === "GBP"
+                      ? "bg-accent-purple text-white"
+                      : "bg-bg-secondary text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  GBP
+                </button>
+              </div>
               <button
-                onClick={() => setCurrency("USD")}
-                className={`px-3 py-2 transition ${
-                  currency === "USD"
-                    ? "bg-accent-purple text-white"
-                    : "bg-bg-secondary text-text-secondary hover:text-text-primary"
-                }`}
+                onClick={fetchQuotes}
+                disabled={quotesLoading}
+                className="inline-flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-secondary px-3 py-2 text-sm font-medium text-text-primary transition hover:-translate-y-0.5 hover:border-accent-blue/40 disabled:opacity-50"
+                title="Refresh prices"
               >
-                USD
+                <RefreshCw className={`h-4 w-4 ${quotesLoading ? "animate-spin" : ""}`} />
               </button>
               <button
-                onClick={() => setCurrency("GBP")}
-                className={`px-3 py-2 transition ${
-                  currency === "GBP"
-                    ? "bg-accent-purple text-white"
-                    : "bg-bg-secondary text-text-secondary hover:text-text-primary"
-                }`}
+                onClick={openAdd}
+                disabled={investingAccounts.length === 0}
+                className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-50"
               >
-                GBP
+                <Plus className="h-4 w-4" /> Add Holding
               </button>
             </div>
-            <button
-              onClick={fetchQuotes}
-              disabled={quotesLoading}
-              className="inline-flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-secondary px-3 py-2 text-sm font-medium text-text-primary transition hover:-translate-y-0.5 hover:border-accent-blue/40 disabled:opacity-50"
-              title="Refresh prices"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${quotesLoading ? "animate-spin" : ""}`}
-              />
-            </button>
-            <button
-              onClick={openAdd}
-              disabled={investingAccounts.length === 0}
-              className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-50"
-            >
-              <Plus className="h-4 w-4" /> Add Holding
-            </button>
-          </div>
-        }
-      />
+          }
+        />
       </div>
 
       {investingAccounts.length === 0 && (
@@ -672,7 +737,16 @@ export function StocksContent() {
         </div>
       )}
 
-      {missingPrices && <p role="status" className="mb-4 rounded-xl border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-text-secondary">{quotesLoading ? "Loading market prices…" : "Some market prices are unavailable. Portfolio totals will appear when all prices are available."}</p>}
+      {missingPrices && (
+        <p
+          role="status"
+          className="mb-4 rounded-xl border border-border-subtle bg-bg-elevated px-4 py-3 text-sm text-text-secondary"
+        >
+          {quotesLoading
+            ? "Loading market prices…"
+            : "Some market prices are unavailable. Portfolio totals will appear when all prices are available."}
+        </p>
+      )}
       {quotesError && (
         <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-400">
           {quotesError}
@@ -684,12 +758,20 @@ export function StocksContent() {
         <StatCard
           title={`Portfolio Value (${currency})`}
           value={missingPrices ? "Unavailable" : m(totalMarketValue)}
-          subtitle={currency === "GBP" && fxRate !== 1 ? `1 USD = ${fxRate.toFixed(4)} GBP` : undefined}
+          subtitle={
+            currency === "GBP" && fxRate !== 1 ? `1 USD = ${fxRate.toFixed(4)} GBP` : undefined
+          }
           icon={<DollarSign className="h-5 w-5" />}
         />
         <StatCard
           title="Total Gain/Loss"
-          value={missingPrices ? "Unavailable" : showBalances ? `${totalGain >= 0 ? "+" : ""}${formatMoney(totalGain, currency)}` : HIDDEN_BALANCE}
+          value={
+            missingPrices
+              ? "Unavailable"
+              : showBalances
+                ? `${totalGain >= 0 ? "+" : ""}${formatMoney(totalGain, currency)}`
+                : HIDDEN_BALANCE
+          }
           subtitle={
             !missingPrices && showBalances && totalCostBasis > 0
               ? `${totalGainPercent >= 0 ? "+" : ""}${totalGainPercent.toFixed(2)}%`
@@ -706,9 +788,11 @@ export function StocksContent() {
         <StatCard
           title="Today's Change"
           value={
-            missingPrices ? "Unavailable" : showBalances
-              ? `${totalDayChange >= 0 ? "+" : ""}${formatMoney(totalDayChange, currency)}`
-              : HIDDEN_BALANCE
+            missingPrices
+              ? "Unavailable"
+              : showBalances
+                ? `${totalDayChange >= 0 ? "+" : ""}${formatMoney(totalDayChange, currency)}`
+                : HIDDEN_BALANCE
           }
           icon={<BarChart3 className="h-5 w-5" />}
         />
@@ -744,9 +828,7 @@ export function StocksContent() {
             {pieData.length > 0 && (
               <div className="rounded-2xl border border-border-subtle bg-bg-secondary p-5">
                 <div className="mb-4 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    Portfolio Allocation
-                  </h3>
+                  <h3 className="text-sm font-semibold text-text-primary">Portfolio Allocation</h3>
                   <select
                     value={pieAccountFilter}
                     onChange={(e) => setPieAccountFilter(e.target.value)}
@@ -754,7 +836,9 @@ export function StocksContent() {
                   >
                     <option value="">All Accounts</option>
                     {investingAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -770,18 +854,12 @@ export function StocksContent() {
                       dataKey="value"
                       stroke="none"
                       label={({ name, percent }) =>
-                        showBalances
-                          ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
-                          : name
+                        showBalances ? `${name} ${((percent ?? 0) * 100).toFixed(0)}%` : name
                       }
                       labelLine={false}
                     >
                       {pieData.map((entry, idx) => (
-                        <Cell
-                          key={entry.name}
-                          fill={COLORS[idx % COLORS.length]}
-                          stroke="none"
-                        />
+                        <Cell key={entry.name} fill={COLORS[idx % COLORS.length]} stroke="none" />
                       ))}
                     </Pie>
                     <Tooltip
@@ -796,9 +874,7 @@ export function StocksContent() {
                       labelStyle={{ color: CHART_TOOLTIP_LABEL }}
                       cursor={{ fill: CHART_CURSOR }}
                       formatter={(value) => [
-                        showBalances
-                          ? `$${Number(value ?? 0).toLocaleString()}`
-                          : HIDDEN_BALANCE,
+                        showBalances ? `$${Number(value ?? 0).toLocaleString()}` : HIDDEN_BALANCE,
                         "",
                       ]}
                     />
@@ -821,22 +897,19 @@ export function StocksContent() {
                   >
                     <option value="">All Accounts</option>
                     {investingAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={perfData} layout="vertical">
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke={CHART_GRID_COLOR}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} />
                     <XAxis
                       type="number"
                       tick={{ fontSize: 11, fill: CHART_AXIS_COLOR }}
-                      tickFormatter={(v) =>
-                        showBalances ? `${v}%` : "••••"
-                      }
+                      tickFormatter={(v) => (showBalances ? `${v}%` : "••••")}
                     />
                     <YAxis
                       type="category"
@@ -856,9 +929,7 @@ export function StocksContent() {
                       labelStyle={{ color: CHART_TOOLTIP_LABEL }}
                       cursor={{ fill: CHART_CURSOR }}
                       formatter={(value) => [
-                        showBalances
-                          ? `${Number(value ?? 0).toFixed(2)}%`
-                          : HIDDEN_BALANCE,
+                        showBalances ? `${Number(value ?? 0).toFixed(2)}%` : HIDDEN_BALANCE,
                         "Gain",
                       ]}
                     />
@@ -885,49 +956,66 @@ export function StocksContent() {
             const sortedHoldings = [...acctHoldings].sort((a, b) => {
               let cmp = 0;
               switch (hSortKey) {
-                case "symbol": cmp = a.sym.localeCompare(b.sym); break;
-                case "shares": cmp = a.shares - b.shares; break;
-                case "value": cmp = a.marketValue - b.marketValue; break;
-                case "gain": cmp = a.gainPercent - b.gainPercent; break;
+                case "symbol":
+                  cmp = a.sym.localeCompare(b.sym);
+                  break;
+                case "shares":
+                  cmp = a.shares - b.shares;
+                  break;
+                case "value":
+                  cmp = a.marketValue - b.marketValue;
+                  break;
+                case "gain":
+                  cmp = a.gainPercent - b.gainPercent;
+                  break;
               }
               return hSortDir === "asc" ? cmp : -cmp;
             });
-            const acctTotal = acctHoldings.reduce(
-              (s, h) => s + h.marketValue,
-              0
-            );
+            const acctTotal = acctHoldings.reduce((s, h) => s + h.marketValue, 0);
 
             return (
               <div key={acct.id} className="mb-6">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-base font-semibold text-text-primary">
-                    {acct.name}
-                  </h2>
-                  <span className="text-sm font-medium text-text-secondary">
-                    {m(acctTotal)}
-                  </span>
+                  <h2 className="text-base font-semibold text-text-primary">{acct.name}</h2>
+                  <span className="text-sm font-medium text-text-secondary">{m(acctTotal)}</span>
                 </div>
                 <div className="overflow-x-auto rounded-2xl border border-border-subtle">
                   <table className="w-full min-w-[700px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
                     <thead>
                       <tr className="border-b border-border-subtle bg-bg-secondary">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleHSort("symbol")}>
-                          Symbol<HSortIcon col="symbol" />
+                        <th
+                          className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleHSort("symbol")}
+                        >
+                          Symbol
+                          <HSortIcon col="symbol" />
                         </th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleHSort("shares")}>
-                          Shares<HSortIcon col="shares" />
+                        <th
+                          className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleHSort("shares")}
+                        >
+                          Shares
+                          <HSortIcon col="shares" />
                         </th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
                           Price
                         </th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleHSort("value")}>
-                          Value<HSortIcon col="value" />
+                        <th
+                          className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleHSort("value")}
+                        >
+                          Value
+                          <HSortIcon col="value" />
                         </th>
                         <th className="hidden md:table-cell px-4 py-3 text-right text-xs font-medium text-text-secondary">
                           Day Change
                         </th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleHSort("gain")}>
-                          Total Gain<HSortIcon col="gain" />
+                        <th
+                          className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleHSort("gain")}
+                        >
+                          Total Gain
+                          <HSortIcon col="gain" />
                         </th>
                         <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
                           Actions
@@ -936,105 +1024,98 @@ export function StocksContent() {
                     </thead>
                     <tbody>
                       {sortedHoldings.map((h) => {
-
                         return (
-                        <tr
-                          key={h.id}
-                          className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
-                        >
-                          <td className="px-4 py-3">
-                            <div>
-                              <span className="font-mono font-semibold text-text-primary">
-                                {h.sym}
-                              </span>
-                              {h.quote && (
-                                <p className="text-[10px] text-text-secondary truncate max-w-[120px]">
-                                  {h.quote.name}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right text-text-primary">
-                            {(
-                              showBalances
+                          <tr
+                            key={h.id}
+                            className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+                          >
+                            <td className="px-4 py-3">
+                              <div>
+                                <span className="font-mono font-semibold text-text-primary">
+                                  {h.sym}
+                                </span>
+                                {h.quote && (
+                                  <p className="text-[10px] text-text-secondary truncate max-w-[120px]">
+                                    {h.quote.name}
+                                  </p>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-text-primary">
+                              {showBalances
                                 ? h.shares % 1 === 0
                                   ? h.shares.toString()
                                   : h.shares.toFixed(4)
-                                : "••••"
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right text-text-secondary">
-                            {(
-                              showBalances
-                                ? !h.hasPrice ? "—" : `${currencySymbol}${h.price.toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}`
-                                : HIDDEN_BALANCE
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-text-primary">
-                            {h.hasPrice ? m(h.marketValue) : "—"}
-                          </td>
-                          <td className="hidden md:table-cell px-4 py-3 text-right">
-                            {showBalances ? (
-                              <span
-                                className={
-                                  h.dayChange >= 0
-                                    ? "text-emerald-400"
-                                    : "text-red-400"
-                                }
-                              >
-                                {h.dayChange >= 0 ? "+" : ""}
-                                {formatMoney(h.dayChange, currency)}{" "}
-                                <span className="text-[10px]">
-                                  ({h.dayChangePercent >= 0 ? "+" : ""}
-                                  {h.dayChangePercent.toFixed(2)}%)
+                                : "••••"}
+                            </td>
+                            <td className="px-4 py-3 text-right text-text-secondary">
+                              {showBalances
+                                ? !h.hasPrice
+                                  ? "—"
+                                  : `${currencySymbol}${h.price.toLocaleString(undefined, {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    })}`
+                                : HIDDEN_BALANCE}
+                            </td>
+                            <td className="px-4 py-3 text-right font-semibold text-text-primary">
+                              {h.hasPrice ? m(h.marketValue) : "—"}
+                            </td>
+                            <td className="hidden md:table-cell px-4 py-3 text-right">
+                              {showBalances ? (
+                                <span
+                                  className={h.dayChange >= 0 ? "text-emerald-400" : "text-red-400"}
+                                >
+                                  {h.dayChange >= 0 ? "+" : ""}
+                                  {formatMoney(h.dayChange, currency)}{" "}
+                                  <span className="text-[10px]">
+                                    ({h.dayChangePercent >= 0 ? "+" : ""}
+                                    {h.dayChangePercent.toFixed(2)}%)
+                                  </span>
                                 </span>
-                              </span>
-                            ) : (
-                              HIDDEN_BALANCE
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {!h.hasPrice ? <span className="text-xs text-text-secondary">Awaiting price</span> : showBalances ? (
-                              <span
-                                className={
-                                  h.gain >= 0
-                                    ? "text-emerald-400"
-                                    : "text-red-400"
-                                }
-                              >
-                                {h.gain >= 0 ? "+" : ""}
-                                {formatMoney(h.gain, currency)}{" "}
-                                <span className="text-[10px]">
-                                  ({h.gainPercent >= 0 ? "+" : ""}
-                                  {h.gainPercent.toFixed(2)}%)
+                              ) : (
+                                HIDDEN_BALANCE
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {!h.hasPrice ? (
+                                <span className="text-xs text-text-secondary">Awaiting price</span>
+                              ) : showBalances ? (
+                                <span className={h.gain >= 0 ? "text-emerald-400" : "text-red-400"}>
+                                  {h.gain >= 0 ? "+" : ""}
+                                  {formatMoney(h.gain, currency)}{" "}
+                                  <span className="text-[10px]">
+                                    ({h.gainPercent >= 0 ? "+" : ""}
+                                    {h.gainPercent.toFixed(2)}%)
+                                  </span>
                                 </span>
-                              </span>
-                            ) : (
-                              HIDDEN_BALANCE
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {(
-                              <div className="flex items-center justify-end gap-1">
-                                <button
-                                  onClick={() => openEdit(h)}
-                                  className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                                 aria-label="Edit" title="Edit">
-                                  <Pencil className="h-4 w-4" />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(h)}
-                                  className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                                 aria-label="Delete" title="Delete">
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
+                              ) : (
+                                HIDDEN_BALANCE
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => openEdit(h)}
+                                    className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                                    aria-label="Edit"
+                                    title="Edit"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(h)}
+                                    className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                                    aria-label="Delete"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              }
+                            </td>
+                          </tr>
                         );
                       })}
                     </tbody>
@@ -1047,10 +1128,53 @@ export function StocksContent() {
       )}
 
       {/* Add Modal */}
-<TransactionEditDialog open={!!inlineDivId} title="Edit Dividend" saving={saving} onClose={()=>setInlineDivId(null)} onSave={async()=>{if(inlineDivId) await handleInlineDividendSave(inlineDivId);}}>
-<div className="grid gap-5 sm:grid-cols-2"><EditField label="Date"><input aria-label="Date" type="date" required value={editDivDate} onChange={event=>setEditDivDate(event.target.value)} /></EditField><EditField label="Amount"><input aria-label="Amount" type="number" min="0.01" step="0.01" required value={editDivAmount} onChange={event=>setEditDivAmount(event.target.value)} /></EditField></div>
-<label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={editDivReinvested} onChange={event=>setEditDivReinvested(event.target.checked)} />Reinvested</label>
-<EditField label="Notes"><textarea aria-label="Notes" value={editDivNotes} onChange={event=>setEditDivNotes(event.target.value)} /></EditField></TransactionEditDialog>
+      <TransactionEditDialog
+        open={!!inlineDivId}
+        title="Edit Dividend"
+        saving={saving}
+        onClose={() => setInlineDivId(null)}
+        onSave={async () => {
+          if (inlineDivId) await handleInlineDividendSave(inlineDivId);
+        }}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <EditField label="Date">
+            <input
+              aria-label="Date"
+              type="date"
+              required
+              value={editDivDate}
+              onChange={(event) => setEditDivDate(event.target.value)}
+            />
+          </EditField>
+          <EditField label="Amount">
+            <input
+              aria-label="Amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              value={editDivAmount}
+              onChange={(event) => setEditDivAmount(event.target.value)}
+            />
+          </EditField>
+        </div>
+        <label className="flex min-h-11 items-center gap-3 text-sm">
+          <input
+            type="checkbox"
+            checked={editDivReinvested}
+            onChange={(event) => setEditDivReinvested(event.target.checked)}
+          />
+          Reinvested
+        </label>
+        <EditField label="Notes">
+          <textarea
+            aria-label="Notes"
+            value={editDivNotes}
+            onChange={(event) => setEditDivNotes(event.target.value)}
+          />
+        </EditField>
+      </TransactionEditDialog>
       <Modal
         open={showAdd}
         onClose={() => {
@@ -1077,9 +1201,7 @@ export function StocksContent() {
       {/* Dividends Section */}
       <div className="mt-8">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-text-primary">
-            Dividend Tracker
-          </h2>
+          <h2 className="text-lg font-semibold text-text-primary">Dividend Tracker</h2>
           <button
             onClick={() => openDividendModal()}
             disabled={holdings.length === 0}
@@ -1093,15 +1215,11 @@ export function StocksContent() {
         <div className="mb-4 grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-border-subtle bg-bg-secondary p-4">
             <p className="text-xs text-text-secondary">Total Dividends</p>
-            <p className="mt-1 text-lg font-bold text-text-primary">
-              {m(totalDividends)}
-            </p>
+            <p className="mt-1 text-lg font-bold text-text-primary">{m(totalDividends)}</p>
           </div>
           <div className="rounded-2xl border border-border-subtle bg-bg-secondary p-4">
             <p className="text-xs text-text-secondary">YTD Dividends</p>
-            <p className="mt-1 text-lg font-bold text-text-primary">
-              {m(ytdDividends)}
-            </p>
+            <p className="mt-1 text-lg font-bold text-text-primary">{m(ytdDividends)}</p>
           </div>
           <div className="rounded-2xl border border-border-subtle bg-bg-secondary p-4">
             <p className="text-xs text-text-secondary">Yield on Cost</p>
@@ -1125,12 +1243,8 @@ export function StocksContent() {
                   key={sym}
                   className="rounded-xl border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs"
                 >
-                  <span className="font-mono font-semibold text-accent-purple">
-                    {sym}
-                  </span>
-                  <span className="ml-2 text-text-primary">
-                    {formatMoney(total, currency)}
-                  </span>
+                  <span className="font-mono font-semibold text-accent-purple">{sym}</span>
+                  <span className="ml-2 text-text-primary">{formatMoney(total, currency)}</span>
                 </span>
               ))}
           </div>
@@ -1142,17 +1256,29 @@ export function StocksContent() {
             <table className="w-full min-w-[560px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
               <thead>
                 <tr className="border-b border-border-subtle bg-bg-secondary">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleDSort("date")}>
-                    Date<DSortIcon col="date" />
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                    onClick={() => toggleDSort("date")}
+                  >
+                    Date
+                    <DSortIcon col="date" />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleDSort("symbol")}>
-                    Symbol<DSortIcon col="symbol" />
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                    onClick={() => toggleDSort("symbol")}
+                  >
+                    Symbol
+                    <DSortIcon col="symbol" />
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium text-text-secondary">
                     Currency
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleDSort("amount")}>
-                    Amount<DSortIcon col="amount" />
+                  <th
+                    className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                    onClick={() => toggleDSort("amount")}
+                  >
+                    Amount
+                    <DSortIcon col="amount" />
                   </th>
                   <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-text-secondary">
                     Notes
@@ -1163,71 +1289,80 @@ export function StocksContent() {
                 </tr>
               </thead>
               <tbody>
-                {[...dividends].sort((a, b) => {
-                  let cmp = 0;
-                  switch (dSortKey) {
-                    case "date": cmp = a.date.localeCompare(b.date); break;
-                    case "symbol": cmp = a.symbol.localeCompare(b.symbol); break;
-                    case "amount": cmp = a.amount - b.amount; break;
-                  }
-                  return dSortDir === "asc" ? cmp : -cmp;
-                }).slice(0, 20).map((d) => {
-
-                  return (
-                  <tr
-                    key={d.id}
-                    className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
-                  >
-                    <td className="px-4 py-3 text-text-secondary">
-                      {(
-                        new Date(d.date + "T00:00:00").toLocaleDateString(
-                          "en-GB",
-                          { month: "short", day: "numeric", year: "numeric" }
-                        )
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-mono font-semibold text-text-primary">
-                      {d.symbol}
-                      {d.reinvested ? (
-                        <span className="ml-1.5 rounded bg-accent-purple/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-purple brightness-125">
-                          DRIP
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="rounded-md bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-text-secondary">
-                        {d.currency}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-emerald-400">
-                      {(
-                        showBalances ? `+${formatMoney(d.amount, d.currency)}` : HIDDEN_BALANCE
-                      )}
-                    </td>
-                    <td className="hidden sm:table-cell px-4 py-3 text-text-secondary text-xs truncate max-w-[200px]">
-                      {d.notes || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {(
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => startInlineDividend(d)}
-                            className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                           aria-label="Edit" title="Edit">
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteDividend(d)}
-                            className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                           aria-label="Delete" title="Delete">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                  );
-                })}
+                {[...dividends]
+                  .sort((a, b) => {
+                    let cmp = 0;
+                    switch (dSortKey) {
+                      case "date":
+                        cmp = a.date.localeCompare(b.date);
+                        break;
+                      case "symbol":
+                        cmp = a.symbol.localeCompare(b.symbol);
+                        break;
+                      case "amount":
+                        cmp = a.amount - b.amount;
+                        break;
+                    }
+                    return dSortDir === "asc" ? cmp : -cmp;
+                  })
+                  .slice(0, 20)
+                  .map((d) => {
+                    return (
+                      <tr
+                        key={d.id}
+                        className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+                      >
+                        <td className="px-4 py-3 text-text-secondary">
+                          {new Date(d.date + "T00:00:00").toLocaleDateString("en-GB", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-semibold text-text-primary">
+                          {d.symbol}
+                          {d.reinvested ? (
+                            <span className="ml-1.5 rounded bg-accent-purple/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-purple brightness-125">
+                              DRIP
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="rounded-md bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                            {d.currency}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-emerald-400">
+                          {showBalances ? `+${formatMoney(d.amount, d.currency)}` : HIDDEN_BALANCE}
+                        </td>
+                        <td className="hidden sm:table-cell px-4 py-3 text-text-secondary text-xs truncate max-w-[200px]">
+                          {d.notes || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => startInlineDividend(d)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                                aria-label="Edit"
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDividend(d)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                                aria-label="Delete"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
@@ -1239,14 +1374,13 @@ export function StocksContent() {
       </div>
 
       {/* Dividend Modal */}
-      <Modal
-        open={showDividend}
-        onClose={() => setShowDividend(false)}
-        title="Log Dividend"
-      >
+      <Modal open={showDividend} onClose={() => setShowDividend(false)} title="Log Dividend">
         <form onSubmit={handleAddDividend} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-4">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="stocks-field-4"
+            >
               Holding
             </label>
             <select
@@ -1256,11 +1390,14 @@ export function StocksContent() {
                 const h = holdings.find((h) => h.id === e.target.value);
                 if (h) setDivSymbol(h.symbol.toUpperCase());
               }}
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="stocks-field-4"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="stocks-field-4"
             >
               <option value="">Select holding…</option>
               {holdings
-                .filter((h) => h.symbol.toUpperCase() !== "CASH" && h.symbol.toUpperCase() !== "CASHCAD")
+                .filter(
+                  (h) => h.symbol.toUpperCase() !== "CASH" && h.symbol.toUpperCase() !== "CASHCAD"
+                )
                 .map((h) => (
                   <option key={h.id} value={h.id}>
                     {h.symbol.toUpperCase()} — {h.shares} shares ({h.cost_currency ?? "USD"})
@@ -1270,8 +1407,16 @@ export function StocksContent() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-5">
-                Amount ({(() => { const h = holdings.find((h) => h.id === divHoldingId); return h?.cost_currency ?? "USD"; })()})
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="stocks-field-5"
+              >
+                Amount (
+                {(() => {
+                  const h = holdings.find((h) => h.id === divHoldingId);
+                  return h?.cost_currency ?? "USD";
+                })()}
+                )
               </label>
               <input
                 type="number"
@@ -1279,23 +1424,31 @@ export function StocksContent() {
                 value={divAmount}
                 onChange={(e) => setDivAmount(e.target.value)}
                 placeholder="25.00"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="stocks-field-5"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="stocks-field-5"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-6">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="stocks-field-6"
+              >
                 Date
               </label>
               <input
                 type="date"
                 value={divDate}
                 onChange={(e) => setDivDate(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="stocks-field-6"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="stocks-field-6"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="stocks-field-7">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="stocks-field-7"
+            >
               Notes (optional)
             </label>
             <input
@@ -1303,7 +1456,8 @@ export function StocksContent() {
               value={divNotes}
               onChange={(e) => setDivNotes(e.target.value)}
               placeholder="Q2 dividend, special dividend…"
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="stocks-field-7"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="stocks-field-7"
             />
           </div>
           <label className="flex items-center gap-2 text-sm text-text-primary">
@@ -1316,9 +1470,7 @@ export function StocksContent() {
             Reinvested (excluded from net worth / portfolio value)
           </label>
           {divError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {divError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{divError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -1341,4 +1493,8 @@ export function StocksContent() {
       </Modal>
     </>
   );
+}
+
+export function StocksContent() {
+  return isAuthenticatedMainApp() ? <AuthenticatedInvestments /> : <OriginalStocksContent />;
 }

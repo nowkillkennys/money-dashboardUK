@@ -1,3 +1,5 @@
+> Continued implementation: goals/earmarks/templates, subscriptions, safe settings, holdings and record-only dividends are now connected. See [main-feature-continuation.md](main-feature-continuation.md) for current scope and verification; this report records the preceding slice.
+
 # Main application integration — 26 November 2026
 
 The authenticated product now uses the original Money Dashboard shell and native routes at http://127.0.0.1:13022/. `/workspace` remains a bookmark redirect to `/debts`; the standalone workspace was an intermediate domain/security seam, not the target product. The user's existing local login is retained. No original application or real financial database was reset, imported or replaced. No external financial/model service or public deployment is enabled.

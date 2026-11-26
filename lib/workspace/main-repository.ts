@@ -1,3 +1,6 @@
+import { goalFields, executeGoalCommand } from "./main-goals";
+import { preferenceFields, executePreferenceCommand } from "./main-preferences";
+import { investmentFields, executeInvestmentCommand } from "./main-investments";
 import { londonCivilDate } from "../money/uk-locale";
 import { createHash, randomUUID } from "node:crypto";
 import { withUserDb } from "./db";
@@ -98,6 +101,9 @@ export async function executeMainCommand(
 ): Promise<{ id: string; version: number; row: any }> {
   const common = ["action", "id", "version", "currency"];
   const allowed: Record<string, string[]> = {
+    ...goalFields,
+    ...preferenceFields,
+    ...investmentFields,
     bank: ["name", "type", "starting_balance", "position", "color", "archived"],
     transaction: [
       "type",
@@ -138,7 +144,9 @@ export async function executeMainCommand(
       "tx_overrides",
     ],
   };
-  const category = String(input.action).split(".")[0];
+  const category = typeof input.action === "string" ? input.action.split(".")[0] : "";
+  if (!Object.prototype.hasOwnProperty.call(allowed, category))
+    throw new HttpError(400, "Unsupported command");
   if (Object.keys(input).some((k) => ![...common, ...(allowed[category] ?? [])].includes(k)))
     throw new HttpError(400, "Unknown command field");
   if (
@@ -172,6 +180,22 @@ export async function executeMainCommand(
     if (!flags.manual) throw new HttpError(403, "Manual input is disabled");
     if (input.currency && input.currency !== "GBP")
       throw new HttpError(400, "This workspace uses GBP");
+    const extension =
+      (await executeGoalCommand(c, owner, input)) ??
+      (await executePreferenceCommand(c, owner, input)) ??
+      (await executeInvestmentCommand(c, owner, input));
+    if (extension) {
+      const result = {
+        id: extension.id,
+        version: extension.version,
+        row: plain(extension.row ?? extension),
+      };
+      await c.query(
+        "INSERT INTO money_command_receipts(user_id,key,fingerprint,result) VALUES($1,$2,$3,$4)",
+        [owner, key, fingerprint, JSON.stringify(result)]
+      );
+      return result;
+    }
     const [entity, action] = String(input.action).split(".");
     const table =
       entity === "bank"
@@ -475,7 +499,7 @@ export async function executeMainCommand(
       if (entity === "bank") {
         const references = (
           await c.query(
-            `SELECT EXISTS(SELECT 1 FROM money_transactions WHERE account_id=$1 OR from_account_id=$1 OR to_account_id=$1 UNION ALL SELECT 1 FROM money_credit_card_payments WHERE account_id=$1 UNION ALL SELECT 1 FROM money_credit_cards WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goals WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goal_accounts WHERE account_id=$1 UNION ALL SELECT 1 FROM money_holdings WHERE account_id=$1 UNION ALL SELECT 1 FROM money_reconciliation_sessions WHERE account_id=$1) AS present`,
+            `SELECT EXISTS(SELECT 1 FROM money_transactions WHERE account_id=$1 OR from_account_id=$1 OR to_account_id=$1 UNION ALL SELECT 1 FROM money_credit_card_payments WHERE account_id=$1 UNION ALL SELECT 1 FROM money_credit_cards WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goals WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goal_accounts WHERE account_id=$1 UNION ALL SELECT 1 FROM money_holdings WHERE account_id=$1 UNION ALL SELECT 1 FROM money_subscriptions WHERE payment_account_id=$1::text UNION ALL SELECT 1 FROM money_reconciliation_sessions WHERE account_id=$1) AS present`,
             [resourceId]
           )
         ).rows[0];

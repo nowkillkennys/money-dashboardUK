@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { useMoneyData } from "../hooks/use-money-data";
 import { PageHeader, formatMoney, HIDDEN_BALANCE } from "../components/money-ui";
 import { Loader2, Save, Check, RotateCcw, KeyRound, Eye, EyeOff } from "lucide-react";
@@ -57,6 +58,8 @@ const normalizeCategories = (raw: string[]) => {
 
 export function SettingsContent() {
   const { settings, plans, accounts, goals, loading, refresh } = useMoneyData();
+  const authenticated = isAuthenticatedMainApp();
+  const [error, setError] = useState("");
   const { showBalances } = useBalanceVisibility();
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
@@ -65,14 +68,14 @@ export function SettingsContent() {
 
   // Local form state
   const [baseCurrencyInput, setBaseCurrencyInput] = useState<CurrencyCode>("GBP");
-  const [rentAmount, setRentAmount] = useState("2100");
-  const [rentDay, setRentDay] = useState("28");
+  const [rentAmount, setRentAmount] = useState("0");
+  const [rentDay, setRentDay] = useState("1");
   const [rentReminderDays, setRentReminderDays] = useState("7");
   const [billReminderDays, setBillReminderDays] = useState("3");
-  const [budget, setBudget] = useState("3000");
-  const [paycheckAmount, setPaycheckAmount] = useState("3400");
-  const [paycheckFreq, setPaycheckFreq] = useState<PaycheckFrequency>("bi-weekly");
-  const [displayName, setDisplayName] = useState("Amir");
+  const [budget, setBudget] = useState("0");
+  const [paycheckAmount, setPaycheckAmount] = useState("0");
+  const [paycheckFreq, setPaycheckFreq] = useState<PaycheckFrequency>("monthly");
+  const [displayName, setDisplayName] = useState("User");
   const [greetingTone, setGreetingTone] = useState<GreetingTone>("coach");
   const [expenseCategories, setExpenseCategories] = useState<string[]>(DEFAULT_EXPENSE_CATEGORIES);
   const [newExpenseCategory, setNewExpenseCategory] = useState("");
@@ -101,7 +104,7 @@ export function SettingsContent() {
       setBudget(settings.monthly_essentials_budget.toString());
       setPaycheckAmount(settings.paycheck_amount.toString());
       setPaycheckFreq(settings.paycheck_frequency);
-      setDisplayName(settings.display_name || "Amir");
+      setDisplayName(settings.display_name || "User");
       setGreetingTone(settings.greeting_tone || "coach");
       const loadedCategories = normalizeCategories(settings.expense_categories ?? []);
       setExpenseCategories(
@@ -121,14 +124,16 @@ export function SettingsContent() {
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
+    setError("");
     try {
       const normalizedExpenseCategories = normalizeCategories(expenseCategories);
       const normalizedSubscriptionCategories = normalizeCategories(subscriptionCategories);
       const parsedRentReminderDays = parseInt(rentReminderDays, 10);
       const parsedBillReminderDays = parseInt(billReminderDays, 10);
       await upsertSettings({
+        ...(authenticated && settings?.id ? { id: settings.id, version: settings.version } : {}),
         base_currency: baseCurrencyInput,
-        display_name: displayName.trim() || "Amir",
+        display_name: displayName.trim() || "User",
         greeting_tone: greetingTone,
         expense_categories:
           normalizedExpenseCategories.length > 0
@@ -138,8 +143,8 @@ export function SettingsContent() {
           normalizedSubscriptionCategories.length > 0
             ? normalizedSubscriptionCategories
             : DEFAULT_SUBSCRIPTION_CATEGORIES,
-        rent_amount: parseFloat(rentAmount) || 2100,
-        rent_day: parseInt(rentDay) || 28,
+        rent_amount: Number(rentAmount),
+        rent_day: Number(rentDay),
         rent_reminder_days: Math.min(
           30,
           Math.max(0, Number.isNaN(parsedRentReminderDays) ? 7 : parsedRentReminderDays)
@@ -148,21 +153,28 @@ export function SettingsContent() {
           30,
           Math.max(0, Number.isNaN(parsedBillReminderDays) ? 3 : parsedBillReminderDays)
         ),
-        monthly_essentials_budget: parseFloat(budget) || 3000,
-        paycheck_amount: parseFloat(paycheckAmount) || 3400,
+        monthly_essentials_budget: Number(budget),
+        paycheck_amount: Number(paycheckAmount),
         paycheck_frequency: paycheckFreq,
       });
       await refresh();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to save settings");
     } finally {
       setSaving(false);
     }
   };
 
   const handleActivatePlan = async (planId: string) => {
-    await setActivePlan(planId);
-    await refresh();
+    setError("");
+    try {
+      await setActivePlan(planId);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to activate plan");
+    }
   };
 
   if (loading) {
@@ -175,6 +187,17 @@ export function SettingsContent() {
 
   return (
     <>
+      {error && (
+        <p role="alert" className="mb-4 rounded-xl bg-red-500/10 p-4 text-sm text-red-400">
+          {error}
+        </p>
+      )}
+      {authenticated && (
+        <p className="mb-4 text-sm text-text-secondary">
+          GBP preferences only. Reminder timing is saved for planning; external notifications and
+          automatic allocations are off. Schedules do not post expenses.
+        </p>
+      )}
       <PageHeader
         title="Settings"
         description="Configure your finance dashboard"
@@ -270,10 +293,10 @@ export function SettingsContent() {
                 id="settings-field-1"
               >
                 <option value="GBP">GBP</option>
-                <option value="EUR">EUR</option>
-                <option value="CAD">CAD</option>
-                <option value="USD">USD</option>
-                <option value="EGP">EGP</option>
+                {!authenticated && <option value="EUR">EUR</option>}
+                {!authenticated && <option value="CAD">CAD</option>}
+                {!authenticated && <option value="USD">USD</option>}
+                {!authenticated && <option value="EGP">EGP</option>}
               </select>
               <p className="mt-1 text-xs text-text-secondary">
                 Dashboard totals and reports will be shown in this currency (using live FX rates).
@@ -315,7 +338,8 @@ export function SettingsContent() {
                 AI Personality
               </label>
               <p className="mb-2 text-[11px] text-text-secondary">
-                Describe how you want the AI to greet you. Pick a preset or write your own.
+                Choose your greeting preference. Pick a preset or write your own. External AI is off
+                in authenticated mode.
               </p>
               <div className="mb-2 flex flex-wrap gap-2">
                 {[
@@ -622,52 +646,54 @@ export function SettingsContent() {
         </details>
 
         {/* Dismissed Recurring Charges */}
-        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6">
-          <summary>
-            <h2 className="text-base font-semibold text-text-primary">
-              Dismissed Recurring Charges
-            </h2>
-          </summary>
-          <p className="mb-4 text-[11px] text-text-secondary">
-            Merchants you dismiss from detected subscriptions won&apos;t appear again. Restore them
-            here to re-enable detection.
-          </p>
-          {(settings?.dismissed_merchants ?? []).length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {(settings?.dismissed_merchants ?? []).map((merchant) => (
-                <span
-                  key={merchant}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs text-text-primary"
-                >
-                  {merchant}
-                  <button
-                    onClick={async () => {
-                      try {
-                        await fetch("/api/ai/dismiss-merchant", {
-                          method: "DELETE",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ merchant }),
-                        });
-                        await refresh();
-                      } catch {
-                        /* silent */
-                      }
-                    }}
-                    className="ml-0.5 rounded p-0.5 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                    title="Restore"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-text-secondary/60">
-              No dismissed merchants yet. Dismiss a detected recurring charge on the Subscriptions
-              page and it will appear here.
+        {!authenticated && (
+          <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6">
+            <summary>
+              <h2 className="text-base font-semibold text-text-primary">
+                Dismissed Recurring Charges
+              </h2>
+            </summary>
+            <p className="mb-4 text-[11px] text-text-secondary">
+              Merchants you dismiss from detected subscriptions won&apos;t appear again. Restore
+              them here to re-enable detection.
             </p>
-          )}
-        </details>
+            {(settings?.dismissed_merchants ?? []).length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {(settings?.dismissed_merchants ?? []).map((merchant) => (
+                  <span
+                    key={merchant}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs text-text-primary"
+                  >
+                    {merchant}
+                    <button
+                      onClick={async () => {
+                        try {
+                          await fetch("/api/ai/dismiss-merchant", {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ merchant }),
+                          });
+                          await refresh();
+                        } catch {
+                          /* silent */
+                        }
+                      }}
+                      className="ml-0.5 rounded p-0.5 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                      title="Restore"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-text-secondary/60">
+                No dismissed merchants yet. Dismiss a detected recurring charge on the Subscriptions
+                page and it will appear here.
+              </p>
+            )}
+          </details>
+        )}
 
         {/* Allocation Plans — CRUD */}
         <section className="rounded-2xl border border-border-subtle bg-bg-secondary p-6">
@@ -754,8 +780,13 @@ export function SettingsContent() {
                       <button
                         onClick={async () => {
                           if (!confirm(`Delete plan "${plan.name}"?`)) return;
-                          await deleteAllocationPlan(plan.id);
-                          await refresh();
+                          setError("");
+                          try {
+                            await deleteAllocationPlan(plan.id);
+                            await refresh();
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : "Unable to delete plan");
+                          }
                         }}
                         className="rounded-lg p-1 text-text-secondary transition hover:bg-red-500/10 hover:text-red-400"
                         title="Delete"
@@ -946,7 +977,9 @@ export function SettingsContent() {
                         });
                       }
 
-                      for (const [accountId, goalId] of Object.entries(planGoalLinks)) {
+                      for (const [accountId, goalId] of Object.entries(
+                        authenticated ? {} : planGoalLinks
+                      )) {
                         if (goalId && allocObj[accountId]) {
                           try {
                             await addGoalAccountAllocation(goalId, accountId, allocObj[accountId]);
@@ -979,33 +1012,35 @@ export function SettingsContent() {
         {process.env.NEXT_PUBLIC_AUTHENTICATED_APP !== "true" && <ChangePinSection />}
 
         {/* Danger Zone */}
-        <details className="money-settings-group rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
-          <summary>
-            <h2 className="text-base font-semibold text-text-primary">Danger Zone</h2>
-          </summary>
-          <p className="mb-4 text-xs text-text-secondary">
-            Reset all dashboard data. This will delete all accounts, transactions, goals, and
-            settings. Seed data will be recreated on next login.
-          </p>
-          <button
-            onClick={async () => {
-              if (!confirm("This will permanently delete ALL your finance data. Are you sure?"))
-                return;
-              if (!confirm("Really sure? This cannot be undone.")) return;
+        {!authenticated && (
+          <details className="money-settings-group rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
+            <summary>
+              <h2 className="text-base font-semibold text-text-primary">Danger Zone</h2>
+            </summary>
+            <p className="mb-4 text-xs text-text-secondary">
+              Reset all dashboard data. This will delete all accounts, transactions, goals, and
+              settings. Seed data will be recreated on next login.
+            </p>
+            <button
+              onClick={async () => {
+                if (!confirm("This will permanently delete ALL your finance data. Are you sure?"))
+                  return;
+                if (!confirm("Really sure? This cannot be undone.")) return;
 
-              const res = await fetch("/api/reset", { method: "POST" });
-              if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                alert(data.error || "Reset failed");
-                return;
-              }
-              window.location.reload();
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/20"
-          >
-            <RotateCcw className="h-4 w-4" /> Reset All Data
-          </button>
-        </details>
+                const res = await fetch("/api/reset", { method: "POST" });
+                if (!res.ok) {
+                  const data = await res.json().catch(() => ({}));
+                  alert(data.error || "Reset failed");
+                  return;
+                }
+                window.location.reload();
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/20"
+            >
+              <RotateCcw className="h-4 w-4" /> Reset All Data
+            </button>
+          </details>
+        )}
       </div>
       <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-bg-secondary p-4">
         <p className="text-xs text-text-secondary" aria-live="polite">

@@ -23,7 +23,7 @@ export type GreetingTone = string;
 /* ---------- Row types ---------- */
 
 export interface Account {
-  version?:number;
+  version?: number;
   id: string;
   user_id: string;
   name: string;
@@ -39,6 +39,7 @@ export interface Account {
 export type RecurrenceFrequency = "weekly" | "bi-weekly" | "monthly" | "yearly";
 
 export interface Transaction {
+  version?: number;
   id: string;
   user_id: string;
   type: TransactionType;
@@ -71,6 +72,7 @@ export interface TransactionWithBalance extends Transaction {
 }
 
 export interface Goal {
+  version?: number;
   id: string;
   user_id: string;
   name: string;
@@ -82,6 +84,7 @@ export interface Goal {
 }
 
 export interface GoalAccount {
+  version?: number;
   id: string;
   user_id: string;
   goal_id: string;
@@ -91,6 +94,7 @@ export interface GoalAccount {
 }
 
 export interface AllocationPlan {
+  version?: number;
   id: string;
   user_id: string;
   name: string;
@@ -100,6 +104,7 @@ export interface AllocationPlan {
 }
 
 export interface Settings {
+  version?: number;
   id: string;
   user_id: string;
   pin_hash: string | null;
@@ -122,19 +127,20 @@ export interface Settings {
   created_at: string;
 }
 
-
 export interface Holding {
+  version?: number;
   id: string;
   user_id: string;
   account_id: string;
-  symbol: string;        // e.g. "AAPL", "VOO", "CASH"
+  symbol: string; // e.g. "AAPL", "VOO", "CASH"
   shares: number;
-  cost_basis: number;    // total cost paid
+  cost_basis: number; // total cost paid
   cost_currency: CurrencyCode;
   created_at: string;
 }
 
 export interface Subscription {
+  version?: number;
   id: string;
   user_id: string;
   name: string;
@@ -151,6 +157,7 @@ export interface Subscription {
 }
 
 export interface Dividend {
+  version?: number;
   id: string;
   user_id: string;
   holding_id: string;
@@ -188,9 +195,9 @@ export interface PushSubscriptionRecord {
 }
 
 export interface CreditCard {
-  version?:number;
-  tracked_balance?:string|null;
-  reconciliation_needed?:boolean;
+  version?: number;
+  tracked_balance?: string | null;
+  reconciliation_needed?: boolean;
   id: string;
   user_id: string;
   name: string;
@@ -327,7 +334,11 @@ export interface Database {
       };
       money_push_subscriptions: {
         Row: PushSubscriptionRecord;
-        Insert: Omit<PushSubscriptionRecord, "id" | "created_at" | "updated_at"> & { id?: string; created_at?: string; updated_at?: string };
+        Insert: Omit<PushSubscriptionRecord, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: Partial<Omit<PushSubscriptionRecord, "id">>;
       };
       money_net_worth_snapshots: {
@@ -357,23 +368,40 @@ export interface Database {
       };
       money_reconciliation_sessions: {
         Row: ReconciliationSession;
-        Insert: Omit<ReconciliationSession, "id" | "created_at" | "started_at"> & { id?: string; created_at?: string; started_at?: string };
+        Insert: Omit<ReconciliationSession, "id" | "created_at" | "started_at"> & {
+          id?: string;
+          created_at?: string;
+          started_at?: string;
+        };
         Update: Partial<Omit<ReconciliationSession, "id">>;
       };
       money_reconciliation_actions: {
         Row: ReconciliationAction;
-        Insert: Omit<ReconciliationAction, "id" | "created_at"> & { id?: string; created_at?: string };
+        Insert: Omit<ReconciliationAction, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
         Update: Partial<Omit<ReconciliationAction, "id">>;
       };
     };
     Views: Record<string, never>;
     Functions: {
       get_running_balance: {
-        Args: { p_account_id: string; p_owner_id?: string; p_date_from?: string; p_date_to?: string };
+        Args: {
+          p_account_id: string;
+          p_owner_id?: string;
+          p_date_from?: string;
+          p_date_to?: string;
+        };
         Returns: TransactionWithBalance[];
       };
       find_duplicate_transactions: {
-        Args: { p_account_id: string; p_owner_id?: string; p_date_from?: string; p_date_to?: string };
+        Args: {
+          p_account_id: string;
+          p_owner_id?: string;
+          p_date_from?: string;
+          p_date_to?: string;
+        };
         Returns: DuplicateCandidate[];
       };
       money_increment_failed_attempts: {

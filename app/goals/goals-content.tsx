@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { useMoneyData } from "../hooks/use-money-data";
 import { useMoneyFx } from "../hooks/use-money-fx";
 import {
@@ -25,12 +26,10 @@ import {
   CalendarClock,
 } from "lucide-react";
 import {
-  createTransaction,
   createGoal,
   updateGoal,
   deleteGoal as deleteGoalApi,
   setActivePlan,
-  addGoalAccountAllocation,
   type GoalAccountLinkInput,
 } from "@/lib/money/queries";
 import type { CurrencyCode, Goal } from "@/lib/money/database.types";
@@ -40,12 +39,21 @@ import { predictGoalCompletion } from "@/lib/money/forecasting";
 import { convertCurrency } from "@/lib/money/fx";
 
 export function GoalsContent() {
-  const { accounts, goals, goalAccounts, plans, balances, transactions, settings, loading, refresh } =
-    useMoneyData();
+  const {
+    accounts,
+    goals,
+    goalAccounts,
+    plans,
+    balances,
+    transactions,
+    settings,
+    loading,
+    refresh,
+  } = useMoneyData();
   const { fx } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
-  const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
+  const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
   const [showContribute, setShowContribute] = useState<string | null>(null);
   const [contributeAmount, setContributeAmount] = useState("");
   const [contributeAccountId, setContributeAccountId] = useState("");
@@ -65,15 +73,30 @@ export function GoalsContent() {
   const [goalAccountIds, setGoalAccountIds] = useState<string[]>([]);
   const [goalAccountAmounts, setGoalAccountAmounts] = useState<Record<string, string>>({});
   const [goalTargetDate, setGoalTargetDate] = useState("");
+  const [actionError, setActionError] = useState("");
   const [formError, setFormError] = useState("");
 
-  const goalProgress = computeGoalProgress(goals, goalAccounts, balances, accounts, baseCurrency, fx);
+  const goalProgress = computeGoalProgress(
+    goals,
+    goalAccounts,
+    balances,
+    accounts,
+    baseCurrency,
+    fx
+  );
 
   // Sum expense amounts linked to each goal, converted to base currency
   const spentByGoal: Record<string, number> = {};
   for (const tx of transactions) {
     if (tx.type === "expense" && tx.goal_id) {
-      spentByGoal[tx.goal_id] = (spentByGoal[tx.goal_id] || 0) + convertCurrency(Math.max(0, tx.amount - (tx.refunded_amount ?? 0)), tx.currency, baseCurrency, fx);
+      spentByGoal[tx.goal_id] =
+        (spentByGoal[tx.goal_id] || 0) +
+        convertCurrency(
+          Math.max(0, tx.amount - (tx.refunded_amount ?? 0)),
+          tx.currency,
+          baseCurrency,
+          fx
+        );
     }
   }
 
@@ -107,14 +130,10 @@ export function GoalsContent() {
   const emergencyGoal = goals.find((g) => g.name === "Emergency Fund");
   const emergencyBalance = emergencyGoal ? getGoalCurrentBalance(emergencyGoal) : 0;
   const emergencyComplete =
-    emergencyGoal &&
-    emergencyGoal.target_amount &&
-    emergencyBalance >= emergencyGoal.target_amount;
+    emergencyGoal && emergencyGoal.target_amount && emergencyBalance >= emergencyGoal.target_amount;
 
   // Check if Phase 1 is active
-  const phase1Active = plans.some(
-    (p) => p.is_active && p.name.toLowerCase().includes("phase 1")
-  );
+  const phase1Active = plans.some((p) => p.is_active && p.name.toLowerCase().includes("phase 1"));
 
   useEffect(() => {
     if (emergencyComplete && phase1Active && !phase2Dismissed) {
@@ -184,7 +203,10 @@ export function GoalsContent() {
       if (excludeGoalId && link.goal_id === excludeGoalId) continue;
       if (link.allocated_amount === null || link.allocated_amount === undefined) continue;
       const current = existingExplicitByAccountId.get(link.account_id) ?? 0;
-      existingExplicitByAccountId.set(link.account_id, current + Math.max(0, link.allocated_amount));
+      existingExplicitByAccountId.set(
+        link.account_id,
+        current + Math.max(0, link.allocated_amount)
+      );
     }
 
     for (const link of links) {
@@ -228,12 +250,15 @@ export function GoalsContent() {
     setSaving(true);
     try {
       const target = goalTarget ? parseFloat(goalTarget) : null;
-      await createGoal({
-        name: goalName.trim(),
-        target_amount: target,
-        target_date: goalTargetDate || null,
-        linked_account_id: links[0]?.account_id ?? null,
-      }, links);
+      await createGoal(
+        {
+          name: goalName.trim(),
+          target_amount: target,
+          target_date: goalTargetDate || null,
+          linked_account_id: links[0]?.account_id ?? null,
+        },
+        links
+      );
       await refresh();
       setShowAdd(false);
       resetForm();
@@ -267,12 +292,16 @@ export function GoalsContent() {
     setSaving(true);
     try {
       const target = goalTarget ? parseFloat(goalTarget) : null;
-      await updateGoal(editing.id, {
-        name: goalName.trim(),
-        target_amount: target,
-        target_date: goalTargetDate || null,
-        linked_account_id: links[0]?.account_id ?? null,
-      }, links);
+      await updateGoal(
+        editing.id,
+        {
+          name: goalName.trim(),
+          target_amount: target,
+          target_date: goalTargetDate || null,
+          linked_account_id: links[0]?.account_id ?? null,
+        },
+        links
+      );
       await refresh();
       setEditing(null);
       resetForm();
@@ -284,14 +313,26 @@ export function GoalsContent() {
   };
 
   const handleToggleComplete = async (goal: Goal) => {
-    await updateGoal(goal.id, { completed_at: goal.completed_at ? null : new Date().toISOString() });
-    await refresh();
+    setActionError("");
+    try {
+      await updateGoal(goal.id, {
+        completed_at: goal.completed_at ? null : new Date().toISOString(),
+      });
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to update goal.");
+    }
   };
 
   const handleDeleteGoal = async (goal: Goal) => {
     if (!confirm(`Delete goal "${goal.name}"?`)) return;
-    await deleteGoalApi(goal.id);
-    await refresh();
+    setActionError("");
+    try {
+      await deleteGoalApi(goal.id);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Unable to delete goal.");
+    }
   };
 
   const handleContribute = async (goalId: string) => {
@@ -305,22 +346,15 @@ export function GoalsContent() {
         : targetIds[0];
 
     const targetAcct = accounts.find((a) => a.id === targetId);
-    const defaultSource =
-      targetAcct
-        ? accounts.find(
-            (a) =>
-              a.id !== targetId &&
-              a.currency === targetAcct.currency &&
-              a.name === "Personal"
-          ) ||
-          accounts.find(
-            (a) =>
-              a.id !== targetId &&
-              a.currency === targetAcct.currency &&
-              a.type === "checking"
-          ) ||
-          accounts.find((a) => a.id !== targetId && a.currency === targetAcct.currency)
-        : null;
+    const defaultSource = targetAcct
+      ? accounts.find(
+          (a) => a.id !== targetId && a.currency === targetAcct.currency && a.name === "Personal"
+        ) ||
+        accounts.find(
+          (a) => a.id !== targetId && a.currency === targetAcct.currency && a.type === "checking"
+        ) ||
+        accounts.find((a) => a.id !== targetId && a.currency === targetAcct.currency)
+      : null;
     const sourceId = contributeSourceAccountId || defaultSource?.id || "";
     const source = accounts.find((a) => a.id === sourceId);
     if (!source) {
@@ -336,7 +370,9 @@ export function GoalsContent() {
       return;
     }
     if (source.currency !== targetAcct.currency) {
-      setContributeError("Cross-currency goal transfers are not supported yet. Choose accounts with matching currency.");
+      setContributeError(
+        "Cross-currency goal transfers are not supported yet. Choose accounts with matching currency."
+      );
       return;
     }
 
@@ -382,12 +418,15 @@ export function GoalsContent() {
     }
   };
   const handleSwitchToPhase2 = async () => {
-    const phase2 = plans.find((p) =>
-      p.name.toLowerCase().includes("phase 2")
-    );
+    const phase2 = plans.find((p) => p.name.toLowerCase().includes("phase 2"));
     if (phase2) {
-      await setActivePlan(phase2.id);
-      await refresh();
+      try {
+        await setActivePlan(phase2.id);
+        await refresh();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "Unable to activate plan.");
+        return;
+      }
     }
     setShowPhase2Modal(false);
     setPhase2Dismissed(true);
@@ -410,13 +449,13 @@ export function GoalsContent() {
   }, 0);
 
   // Shared form for add/edit
-  const goalForm = (
-    onSubmit: (e: React.FormEvent) => void,
-    submitLabel: string
-  ) => (
+  const goalForm = (onSubmit: (e: React.FormEvent) => void, submitLabel: string) => (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="goals-field-1">
+        <label
+          className="mb-1 block text-xs font-medium text-text-secondary"
+          htmlFor="goals-field-1"
+        >
           Goal Name
         </label>
         <input
@@ -424,12 +463,16 @@ export function GoalsContent() {
           value={goalName}
           onChange={(e) => setGoalName(e.target.value)}
           placeholder="e.g., Emergency Fund"
-          className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="goals-field-1"
+          className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+          id="goals-field-1"
         />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="goals-field-2">
+          <label
+            className="mb-1 block text-xs font-medium text-text-secondary"
+            htmlFor="goals-field-2"
+          >
             Target Amount
           </label>
           <input
@@ -438,18 +481,23 @@ export function GoalsContent() {
             value={goalTarget}
             onChange={(e) => setGoalTarget(e.target.value)}
             placeholder="Leave empty for no cap"
-            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="goals-field-2"
+            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+            id="goals-field-2"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="goals-field-3">
+          <label
+            className="mb-1 block text-xs font-medium text-text-secondary"
+            htmlFor="goals-field-3"
+          >
             Target Date
           </label>
           <input
             type="date"
             value={goalTargetDate}
             onChange={(e) => setGoalTargetDate(e.target.value)}
-            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="goals-field-3"
+            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+            id="goals-field-3"
           />
         </div>
       </div>
@@ -467,7 +515,10 @@ export function GoalsContent() {
               const checked = goalAccountIds.includes(a.id);
               const allocationValue = goalAccountAmounts[a.id] ?? "";
               return (
-                <div key={a.id} className="rounded-lg border border-border-subtle/70 bg-bg-secondary/40 p-3">
+                <div
+                  key={a.id}
+                  className="rounded-lg border border-border-subtle/70 bg-bg-secondary/40 p-3"
+                >
                   <label className="flex items-center gap-2 text-sm text-text-primary">
                     <input
                       type="checkbox"
@@ -517,13 +568,12 @@ export function GoalsContent() {
           </div>
         )}
         <p className="mt-1 text-xs text-text-secondary">
-          Selected: {goalAccountIds.length} | Explicit allocated: {m(selectedExplicitAllocation)} (blank amounts auto-split remaining balance)
+          Selected: {goalAccountIds.length} | Explicit allocated: {m(selectedExplicitAllocation)}{" "}
+          (blank amounts auto-split remaining balance)
         </p>
       </div>
       {formError && (
-        <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-          {formError}
-        </p>
+        <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</p>
       )}
       <div className="flex gap-3 pt-2">
         <button
@@ -550,46 +600,54 @@ export function GoalsContent() {
   );
 
   const contributingGoal = showContribute
-    ? goals.find((goal) => goal.id === showContribute) ?? null
+    ? (goals.find((goal) => goal.id === showContribute) ?? null)
     : null;
-  const contributingGoalAccountIds = contributingGoal
-    ? getGoalAccountIds(contributingGoal)
-    : [];
+  const contributingGoalAccountIds = contributingGoal ? getGoalAccountIds(contributingGoal) : [];
   const contributeTargetAccount =
     contributingGoalAccountIds.length === 0
       ? null
-      : accounts.find(
+      : (accounts.find(
           (a) =>
             a.id ===
             (contributeAccountId && contributingGoalAccountIds.includes(contributeAccountId)
               ? contributeAccountId
               : contributingGoalAccountIds[0])
-        ) ?? null;
+        ) ?? null);
   const contributingSourceAccounts = contributeTargetAccount
     ? accounts.filter(
         (a) =>
-          a.id !== contributeTargetAccount.id &&
-          a.currency === contributeTargetAccount.currency
+          a.id !== contributeTargetAccount.id && a.currency === contributeTargetAccount.currency
       )
     : [];
 
   return (
     <>
       <div data-tour="goals-header">
-      <PageHeader
-        title="Goals"
-        description="Track your financial goals"
-        action={
-          <button
-            onClick={openAdd}
-            className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5"
-          >
-            <Plus className="h-4 w-4" /> Add Goal
-          </button>
-        }
-      />
+        <PageHeader
+          title="Goals"
+          description="Track your financial goals"
+          action={
+            <button
+              onClick={openAdd}
+              className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5"
+            >
+              <Plus className="h-4 w-4" /> Add Goal
+            </button>
+          }
+        />
       </div>
 
+      {actionError && (
+        <p role="alert" className="mb-4 text-sm text-red-400">
+          {actionError}
+        </p>
+      )}
+      {isAuthenticatedMainApp() && (
+        <p className="mb-4 text-sm text-text-secondary">
+          Goal amounts earmark existing cash. Use Transfers to move money, then edit the goal
+          account amounts. Saved allocation plans are templates.
+        </p>
+      )}
       {goals.length === 0 ? (
         <EmptyState
           icon={<Target className="h-6 w-6" />}
@@ -625,9 +683,7 @@ export function GoalsContent() {
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-base font-semibold text-text-primary">
-                      {goal.name}
-                    </h3>
+                    <h3 className="text-base font-semibold text-text-primary">{goal.name}</h3>
                     {isComplete && (
                       <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
                         <PartyPopper className="h-3 w-3" /> Complete!
@@ -640,18 +696,26 @@ export function GoalsContent() {
                       className={`rounded-lg p-1 hover:bg-emerald-500/10 ${isManuallyComplete ? "text-emerald-500" : "text-text-secondary hover:text-emerald-500"}`}
                       title={isManuallyComplete ? "Mark as not complete" : "Mark as complete"}
                     >
-                      {isManuallyComplete ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                      {isManuallyComplete ? (
+                        <CheckCircle2 className="h-4 w-4" />
+                      ) : (
+                        <Circle className="h-4 w-4" />
+                      )}
                     </button>
                     <button
                       onClick={() => openEdit(goal)}
                       className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                     aria-label="Edit" title="Edit">
+                      aria-label="Edit"
+                      title="Edit"
+                    >
                       <Pencil className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteGoal(goal)}
                       className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                     aria-label="Delete" title="Delete">
+                      aria-label="Delete"
+                      title="Delete"
+                    >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
@@ -668,14 +732,8 @@ export function GoalsContent() {
                     </p>
                   )}
                   <div className="flex items-baseline justify-between">
-                    <span className="text-2xl font-bold text-text-primary">
-                      {m(current)}
-                    </span>
-                    {target && (
-                      <span className="text-sm text-text-secondary">
-                        / {m(target)}
-                      </span>
-                    )}
+                    <span className="text-2xl font-bold text-text-primary">{m(current)}</span>
+                    {target && <span className="text-sm text-text-secondary">/ {m(target)}</span>}
                   </div>
 
                   {target ? (
@@ -686,9 +744,7 @@ export function GoalsContent() {
                       color={isComplete ? "bg-emerald-500" : "bg-accent-purple"}
                     />
                   ) : (
-                    <p className="mt-2 text-xs text-text-secondary">
-                      No cap — keep investing!
-                    </p>
+                    <p className="mt-2 text-xs text-text-secondary">No cap — keep investing!</p>
                   )}
 
                   {/* Spent against goal (linked expenses) */}
@@ -696,12 +752,16 @@ export function GoalsContent() {
                     <div className="mt-3 flex items-center justify-between rounded-lg border border-border-subtle bg-bg-elevated px-3 py-2 text-xs">
                       <div className="flex items-center gap-3">
                         <span className="text-text-secondary">Spent</span>
-                        <span className="font-semibold text-text-primary">{m(spentByGoal[goal.id])}</span>
+                        <span className="font-semibold text-text-primary">
+                          {m(spentByGoal[goal.id])}
+                        </span>
                       </div>
                       {target && (
                         <div className="flex items-center gap-1.5">
                           <span className="text-text-secondary">Remaining</span>
-                          <span className={`font-semibold ${target - spentByGoal[goal.id] <= 0 ? "text-red-400" : "text-emerald-500"}`}>
+                          <span
+                            className={`font-semibold ${target - spentByGoal[goal.id] <= 0 ? "text-red-400" : "text-emerald-500"}`}
+                          >
                             {m(Math.max(0, target - spentByGoal[goal.id]))}
                           </span>
                         </div>
@@ -710,68 +770,107 @@ export function GoalsContent() {
                   )}
 
                   {/* Timeline / projected completion */}
-                  {!isComplete && target && target > 0 && (() => {
-                    // Calculate avg monthly contribution from goal-linked account transfers
-                    const goalTxs = transactions.filter(
-                      (t) =>
-                        (t.type === "transfer" &&
-                          t.to_account_id !== null &&
-                          linkedAccountIdSet.has(t.to_account_id)) ||
-                        (t.type === "income" &&
-                          t.account_id !== null &&
-                          linkedAccountIdSet.has(t.account_id))
-                    );
-                    const remaining = target - current;
-                    if (goal.target_date) {
-                      const deadlineDate = new Date(goal.target_date + "T00:00:00");
-                      const daysLeft = Math.max(0, Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-                      const monthsLeft = Math.max(0.1, daysLeft / 30);
-                      const neededPerMonth = remaining / monthsLeft;
-                      return (
-                        <div className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary">
-                          <CalendarClock className="h-3 w-3" />
-                          <span>Target: {new Date(goal.target_date + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" })} — need {showBalances ? formatMoney(neededPerMonth) : HIDDEN_BALANCE}/mo</span>
-                        </div>
+                  {!isComplete &&
+                    target &&
+                    target > 0 &&
+                    (() => {
+                      // Calculate avg monthly contribution from goal-linked account transfers
+                      const goalTxs = transactions.filter(
+                        (t) =>
+                          (t.type === "transfer" &&
+                            t.to_account_id !== null &&
+                            linkedAccountIdSet.has(t.to_account_id)) ||
+                          (t.type === "income" &&
+                            t.account_id !== null &&
+                            linkedAccountIdSet.has(t.account_id))
                       );
-                    }
-                    // Estimate based on avg contributions
-                    if (goalTxs.length >= 2) {
-                      const dates = goalTxs.map((t) => new Date(t.date + "T00:00:00").getTime()).sort();
-                      const spanMonths = Math.max(1, (dates[dates.length - 1] - dates[0]) / (1000 * 60 * 60 * 24 * 30));
-                      const totalContributions = goalTxs.reduce((s, t) => s + t.amount, 0);
-                      const avgPerMonth = totalContributions / spanMonths;
-                      if (avgPerMonth > 0) {
-                        const monthsToGo = remaining / avgPerMonth;
-                        const estDate = new Date();
-                        estDate.setMonth(estDate.getMonth() + Math.ceil(monthsToGo));
+                      const remaining = target - current;
+                      if (goal.target_date) {
+                        const deadlineDate = new Date(goal.target_date + "T00:00:00");
+                        const daysLeft = Math.max(
+                          0,
+                          Math.ceil((deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        );
+                        const monthsLeft = Math.max(0.1, daysLeft / 30);
+                        const neededPerMonth = remaining / monthsLeft;
                         return (
-                          <p className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary">
+                          <div className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary">
                             <CalendarClock className="h-3 w-3" />
-                            Est. completion: {estDate.toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-                          </p>
+                            <span>
+                              Target:{" "}
+                              {new Date(goal.target_date + "T00:00:00").toLocaleDateString(
+                                "en-GB",
+                                { month: "short", year: "numeric" }
+                              )}{" "}
+                              — need {showBalances ? formatMoney(neededPerMonth) : HIDDEN_BALANCE}
+                              /mo
+                            </span>
+                          </div>
                         );
                       }
-                    }
-                    // Fallback: savings-rate-based prediction
-                    const predictions = predictGoalCompletion(goals, goalAccounts, accounts, transactions, balances, fx, baseCurrency);
-                    const pred = predictions.find((p) => p.goalId === goal.id);
-                    if (pred?.predictedDate) {
-                      return (
-                        <div className="mt-2 space-y-1">
-                          <p className="flex items-center gap-1.5 text-xs text-text-secondary">
-                            <CalendarClock className="h-3 w-3" />
-                            Est. completion: {new Date(pred.predictedDate + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
-                          </p>
-                          {pred.onTrack ? (
-                            <span className="inline-flex items-center rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">On track</span>
-                          ) : (
-                            <span className="inline-flex items-center rounded-lg bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">Behind schedule</span>
-                          )}
-                        </div>
+                      // Estimate based on avg contributions
+                      if (goalTxs.length >= 2) {
+                        const dates = goalTxs
+                          .map((t) => new Date(t.date + "T00:00:00").getTime())
+                          .sort();
+                        const spanMonths = Math.max(
+                          1,
+                          (dates[dates.length - 1] - dates[0]) / (1000 * 60 * 60 * 24 * 30)
+                        );
+                        const totalContributions = goalTxs.reduce((s, t) => s + t.amount, 0);
+                        const avgPerMonth = totalContributions / spanMonths;
+                        if (avgPerMonth > 0) {
+                          const monthsToGo = remaining / avgPerMonth;
+                          const estDate = new Date();
+                          estDate.setMonth(estDate.getMonth() + Math.ceil(monthsToGo));
+                          return (
+                            <p className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary">
+                              <CalendarClock className="h-3 w-3" />
+                              Est. completion:{" "}
+                              {estDate.toLocaleDateString("en-GB", {
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </p>
+                          );
+                        }
+                      }
+                      // Fallback: savings-rate-based prediction
+                      const predictions = predictGoalCompletion(
+                        goals,
+                        goalAccounts,
+                        accounts,
+                        transactions,
+                        balances,
+                        fx,
+                        baseCurrency
                       );
-                    }
-                    return null;
-                  })()}
+                      const pred = predictions.find((p) => p.goalId === goal.id);
+                      if (pred?.predictedDate) {
+                        return (
+                          <div className="mt-2 space-y-1">
+                            <p className="flex items-center gap-1.5 text-xs text-text-secondary">
+                              <CalendarClock className="h-3 w-3" />
+                              Est. completion:{" "}
+                              {new Date(pred.predictedDate + "T00:00:00").toLocaleDateString(
+                                "en-GB",
+                                { month: "short", year: "numeric" }
+                              )}
+                            </p>
+                            {pred.onTrack ? (
+                              <span className="inline-flex items-center rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                                On track
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-lg bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                Behind schedule
+                              </span>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                 </div>
 
                 <button
@@ -779,37 +878,40 @@ export function GoalsContent() {
                     const targetIds = getGoalAccountIds(goal);
                     const defaultTargetId = targetIds[0] ?? "";
                     const targetAccount = accounts.find((a) => a.id === defaultTargetId);
-                    const defaultSource =
-                      targetAccount
-                        ? accounts.find(
-                            (a) =>
-                              a.id !== defaultTargetId &&
-                              a.currency === targetAccount.currency &&
-                              a.name === "Personal"
-                          ) ||
-                          accounts.find(
-                            (a) =>
-                              a.id !== defaultTargetId &&
-                              a.currency === targetAccount.currency &&
-                              a.type === "checking"
-                          ) ||
-                          accounts.find(
-                            (a) =>
-                              a.id !== defaultTargetId &&
-                              a.currency === targetAccount.currency
-                          )
-                        : null;
+                    const defaultSource = targetAccount
+                      ? accounts.find(
+                          (a) =>
+                            a.id !== defaultTargetId &&
+                            a.currency === targetAccount.currency &&
+                            a.name === "Personal"
+                        ) ||
+                        accounts.find(
+                          (a) =>
+                            a.id !== defaultTargetId &&
+                            a.currency === targetAccount.currency &&
+                            a.type === "checking"
+                        ) ||
+                        accounts.find(
+                          (a) => a.id !== defaultTargetId && a.currency === targetAccount.currency
+                        )
+                      : null;
                     setShowContribute(goal.id);
                     setContributeAmount("");
                     setContributeAccountId(defaultTargetId);
                     setContributeSourceAccountId(defaultSource?.id ?? "");
                     setContributeError("");
                   }}
-                  disabled={linkedAccountIds.length === 0}
+                  disabled={isAuthenticatedMainApp() || linkedAccountIds.length === 0}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border-subtle px-4 py-2 text-sm text-text-primary transition hover:border-accent-blue hover:text-accent-blue"
-                 aria-label="Add" title="Add">
+                  aria-label="Add"
+                  title="Add"
+                >
                   <Plus className="h-4 w-4" />
-                  {linkedAccountIds.length === 0 ? "Link accounts first" : "Add Contribution"}
+                  {isAuthenticatedMainApp()
+                    ? "Use Transfers, then edit earmarks"
+                    : linkedAccountIds.length === 0
+                      ? "Link accounts first"
+                      : "Add Contribution"}
                 </button>
               </div>
             );
@@ -818,12 +920,26 @@ export function GoalsContent() {
       )}
 
       {/* Add Goal Modal */}
-      <Modal open={showAdd} onClose={() => { setShowAdd(false); resetForm(); }} title="Add Goal">
+      <Modal
+        open={showAdd}
+        onClose={() => {
+          setShowAdd(false);
+          resetForm();
+        }}
+        title="Add Goal"
+      >
         {goalForm(handleAddGoal, "Create Goal")}
       </Modal>
 
       {/* Edit Goal Modal */}
-      <Modal open={editing !== null} onClose={() => { setEditing(null); resetForm(); }} title="Edit Goal">
+      <Modal
+        open={editing !== null}
+        onClose={() => {
+          setEditing(null);
+          resetForm();
+        }}
+        title="Edit Goal"
+      >
         {goalForm(handleEditGoal, "Save Changes")}
       </Modal>
 
@@ -841,7 +957,10 @@ export function GoalsContent() {
         <div className="space-y-4">
           {contributingGoalAccountIds.length > 1 && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="goals-field-4">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="goals-field-4"
+              >
                 Contribute To
               </label>
               <select
@@ -849,31 +968,29 @@ export function GoalsContent() {
                 onChange={(e) => {
                   const nextTargetId = e.target.value;
                   const nextTargetAccount = accounts.find((a) => a.id === nextTargetId);
-                  const nextDefaultSource =
-                    nextTargetAccount
-                      ? accounts.find(
-                          (a) =>
-                            a.id !== nextTargetId &&
-                            a.currency === nextTargetAccount.currency &&
-                            a.name === "Personal"
-                        ) ||
-                        accounts.find(
-                          (a) =>
-                            a.id !== nextTargetId &&
-                            a.currency === nextTargetAccount.currency &&
-                            a.type === "checking"
-                        ) ||
-                        accounts.find(
-                          (a) =>
-                            a.id !== nextTargetId &&
-                            a.currency === nextTargetAccount.currency
-                        )
-                      : null;
+                  const nextDefaultSource = nextTargetAccount
+                    ? accounts.find(
+                        (a) =>
+                          a.id !== nextTargetId &&
+                          a.currency === nextTargetAccount.currency &&
+                          a.name === "Personal"
+                      ) ||
+                      accounts.find(
+                        (a) =>
+                          a.id !== nextTargetId &&
+                          a.currency === nextTargetAccount.currency &&
+                          a.type === "checking"
+                      ) ||
+                      accounts.find(
+                        (a) => a.id !== nextTargetId && a.currency === nextTargetAccount.currency
+                      )
+                    : null;
                   setContributeAccountId(nextTargetId);
                   setContributeSourceAccountId(nextDefaultSource?.id ?? "");
                   setContributeError("");
                 }}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="goals-field-4"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="goals-field-4"
               >
                 {contributingGoalAccountIds.map((accountId) => {
                   const account = accounts.find((a) => a.id === accountId);
@@ -894,7 +1011,8 @@ export function GoalsContent() {
               </label>
               {contributingSourceAccounts.length === 0 ? (
                 <p className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-2.5 text-xs text-yellow-400">
-                  No eligible source account with {contributeTargetAccount.currency}. Create one first.
+                  No eligible source account with {contributeTargetAccount.currency}. Create one
+                  first.
                 </p>
               ) : (
                 <select
@@ -916,7 +1034,10 @@ export function GoalsContent() {
             </div>
           )}
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="goals-field-5">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="goals-field-5"
+            >
               Amount
             </label>
             <input
@@ -928,7 +1049,8 @@ export function GoalsContent() {
                 setContributeError("");
               }}
               placeholder="0.00"
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="goals-field-5"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="goals-field-5"
             />
           </div>
           <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-elevated p-3">
@@ -953,7 +1075,11 @@ export function GoalsContent() {
             </label>
             {contributeAmount && parseFloat(contributeAmount) > 0 && (
               <p className="text-[11px] text-text-secondary">
-                Preview: transfer {formatMoney(parseFloat(contributeAmount) || 0, contributeTargetAccount?.currency ?? baseCurrency)}
+                Preview: transfer{" "}
+                {formatMoney(
+                  parseFloat(contributeAmount) || 0,
+                  contributeTargetAccount?.currency ?? baseCurrency
+                )}
                 {decreaseSourceSplit ? " · source split -" + (contributeAmount || "0") : ""}
                 {increaseDestSplit ? " · dest split +" + (contributeAmount || "0") : ""}
               </p>
@@ -1008,9 +1134,8 @@ export function GoalsContent() {
             {formatMoney(emergencyGoal?.target_amount || 20000)}.
           </p>
           <p className="text-sm text-text-secondary">
-            Would you like to switch to <strong>Phase 2</strong> allocation plan?
-            This reallocates your emergency fund contributions to your car fund
-            and investments.
+            Would you like to switch to <strong>Phase 2</strong> allocation plan? This reallocates
+            your emergency fund contributions to your car fund and investments.
           </p>
           <div className="flex gap-3 pt-2">
             <button
@@ -1034,4 +1159,3 @@ export function GoalsContent() {
     </>
   );
 }
-

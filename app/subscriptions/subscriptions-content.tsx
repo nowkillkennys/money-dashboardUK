@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
+import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { useMoneyData } from "../hooks/use-money-data";
 import { useMoneyFx } from "../hooks/use-money-fx";
 import { useBalanceVisibility } from "../balance-visibility-provider";
@@ -38,11 +39,7 @@ import {
   createTransaction,
   createLinkedCreditCardCharge,
 } from "@/lib/money/queries";
-import type {
-  Subscription,
-  RecurrenceFrequency,
-  CurrencyCode,
-} from "@/lib/money/database.types";
+import type { Subscription, RecurrenceFrequency, CurrencyCode } from "@/lib/money/database.types";
 import { convertCurrency } from "@/lib/money/fx";
 import { subscriptionMonthlyEquivalent } from "@/lib/money/subscription-costs";
 
@@ -88,13 +85,31 @@ function daysUntil(dateStr: string): number {
 /* ------------------------------------------------------------------ */
 
 const DEMO_DETECTED_SUBS: DetectedSubscription[] = [
-  { merchant: "Uber Eats", avgAmount: 42, frequency: "monthly", occurrences: 4, lastDate: todayEST(), confidence: 82, currency: "GBP" },
-  { merchant: "Spotify", avgAmount: 11.99, frequency: "monthly", occurrences: 6, lastDate: todayEST(), confidence: 95, currency: "GBP" },
+  {
+    merchant: "Uber Eats",
+    avgAmount: 42,
+    frequency: "monthly",
+    occurrences: 4,
+    lastDate: todayEST(),
+    confidence: 82,
+    currency: "GBP",
+  },
+  {
+    merchant: "Spotify",
+    avgAmount: 11.99,
+    frequency: "monthly",
+    occurrences: 6,
+    lastDate: todayEST(),
+    confidence: 95,
+    currency: "GBP",
+  },
 ];
 
 export function SubscriptionsContent() {
   const pathname = usePathname();
   const isDemoMode = pathname.startsWith("/demo");
+  const authenticated = isAuthenticatedMainApp();
+  const [commandError, setCommandError] = useState("");
   const { subscriptions, accounts, creditCards, settings, loading, refresh } = useMoneyData();
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
@@ -138,10 +153,15 @@ export function SubscriptionsContent() {
     setDetectLoading(true);
     try {
       const res = await fetch("/api/ai/detect-subscriptions");
-      if (!res.ok) { setDetectLoading(false); return; }
+      if (!res.ok) {
+        setDetectLoading(false);
+        return;
+      }
       const data = await res.json();
       setDetectedSubs(data.detected ?? []);
-    } catch { /* silent */ } finally {
+    } catch {
+      /* silent */
+    } finally {
       setDetectLoading(false);
     }
   }, []);
@@ -151,8 +171,8 @@ export function SubscriptionsContent() {
       setDetectedSubs(DEMO_DETECTED_SUBS);
       return;
     }
-    fetchDetectedSubs();
-  }, [fetchDetectedSubs, isDemoMode]);
+    if (!authenticated) fetchDetectedSubs();
+  }, [fetchDetectedSubs, isDemoMode, authenticated]);
 
   const handleAddDetected = async (d: DetectedSubscription) => {
     setSaving(true);
@@ -170,7 +190,9 @@ export function SubscriptionsContent() {
       });
       setDetectedSubs((prev) => prev.filter((s) => s.merchant !== d.merchant));
       await refresh();
-    } catch { /* ignore */ } finally {
+    } catch {
+      /* ignore */
+    } finally {
       setSaving(false);
     }
   };
@@ -198,28 +220,61 @@ export function SubscriptionsContent() {
       });
       await refresh();
       setInlineEditId(null);
-    } catch { /* ignore */ } finally { setSaving(false); }
+    } catch (err) {
+      setCommandError(err instanceof Error ? err.message : "Unable to update subscription");
+    } finally {
+      setSaving(false);
+    }
   };
 
   /* Sorting */
   const [sortKey, setSortKey] = useState<"name" | "amount" | "monthly" | "next">("next");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const toggleSort = (key: typeof sortKey) => {
-    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortKey(key); setSortDir(key === "next" ? "asc" : "asc"); }
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir(key === "next" ? "asc" : "asc");
+    }
   };
   const SortIcon = ({ col }: { col: typeof sortKey }) =>
-    sortKey === col ? (sortDir === "asc" ? <ArrowUp className="ml-1 inline h-3 w-3" /> : <ArrowDown className="ml-1 inline h-3 w-3" />) : null;
+    sortKey === col ? (
+      sortDir === "asc" ? (
+        <ArrowUp className="ml-1 inline h-3 w-3" />
+      ) : (
+        <ArrowDown className="ml-1 inline h-3 w-3" />
+      )
+    ) : null;
 
   const sortSubs = (list: Subscription[]) => {
     const sorted = [...list];
     sorted.sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
-        case "name": cmp = a.name.localeCompare(b.name); break;
-        case "amount": cmp = a.amount - b.amount; break;
-        case "monthly": cmp = convertCurrency(subscriptionMonthlyEquivalent(a.amount, a.frequency), a.currency ?? baseCurrency, baseCurrency, fx) - convertCurrency(subscriptionMonthlyEquivalent(b.amount, b.frequency), b.currency ?? baseCurrency, baseCurrency, fx); break;
-        case "next": cmp = a.next_billing.localeCompare(b.next_billing); break;
+        case "name":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "amount":
+          cmp = a.amount - b.amount;
+          break;
+        case "monthly":
+          cmp =
+            convertCurrency(
+              subscriptionMonthlyEquivalent(a.amount, a.frequency),
+              a.currency ?? baseCurrency,
+              baseCurrency,
+              fx
+            ) -
+            convertCurrency(
+              subscriptionMonthlyEquivalent(b.amount, b.frequency),
+              b.currency ?? baseCurrency,
+              baseCurrency,
+              fx
+            );
+          break;
+        case "next":
+          cmp = a.next_billing.localeCompare(b.next_billing);
+          break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -227,24 +282,15 @@ export function SubscriptionsContent() {
   };
 
   /* Computed */
-  const activeSubs = useMemo(
-    () => subscriptions.filter((s) => s.is_active),
-    [subscriptions]
-  );
-  const inactiveSubs = useMemo(
-    () => subscriptions.filter((s) => !s.is_active),
-    [subscriptions]
-  );
+  const activeSubs = useMemo(() => subscriptions.filter((s) => s.is_active), [subscriptions]);
+  const inactiveSubs = useMemo(() => subscriptions.filter((s) => !s.is_active), [subscriptions]);
 
   const totalMonthly = useMemo(
     () =>
-      activeSubs.reduce(
-        (sum, s) => {
-          const monthly = subscriptionMonthlyEquivalent(s.amount, s.frequency);
-          return sum + convertCurrency(monthly, s.currency ?? baseCurrency, baseCurrency, fx);
-        },
-        0
-      ),
+      activeSubs.reduce((sum, s) => {
+        const monthly = subscriptionMonthlyEquivalent(s.amount, s.frequency);
+        return sum + convertCurrency(monthly, s.currency ?? baseCurrency, baseCurrency, fx);
+      }, 0),
     [activeSubs, fx, baseCurrency]
   );
   const totalYearly = useMemo(() => totalMonthly * 12, [totalMonthly]);
@@ -259,7 +305,8 @@ export function SubscriptionsContent() {
     for (const s of activeSubs) {
       const cat = s.category || "Other";
       const monthly = subscriptionMonthlyEquivalent(s.amount, s.frequency);
-      map[cat] = (map[cat] || 0) + convertCurrency(monthly, s.currency ?? baseCurrency, baseCurrency, fx);
+      map[cat] =
+        (map[cat] || 0) + convertCurrency(monthly, s.currency ?? baseCurrency, baseCurrency, fx);
     }
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [activeSubs, fx, baseCurrency]);
@@ -346,14 +393,24 @@ export function SubscriptionsContent() {
   };
 
   const handleToggleActive = async (sub: Subscription) => {
-    await updateSubscription(sub.id, { is_active: !sub.is_active });
-    await refresh();
+    setCommandError("");
+    try {
+      await updateSubscription(sub.id, { is_active: !sub.is_active });
+      await refresh();
+    } catch (err) {
+      setCommandError(err instanceof Error ? err.message : "Unable to update subscription");
+    }
   };
 
   const handleDelete = async (sub: Subscription) => {
     if (!confirm(`Delete "${sub.name}" subscription?`)) return;
-    await deleteSubscription(sub.id);
-    await refresh();
+    setCommandError("");
+    try {
+      await deleteSubscription(sub.id);
+      await refresh();
+    } catch (err) {
+      setCommandError(err instanceof Error ? err.message : "Unable to delete subscription");
+    }
   };
 
   const advanceNextBilling = (currentDate: string, freq: RecurrenceFrequency): string => {
@@ -376,6 +433,7 @@ export function SubscriptionsContent() {
   };
 
   const openPaymentModal = (sub: Subscription) => {
+    if (authenticated) return;
     setPayingSub(sub);
     setPaymentAccountId(sub.payment_account_id ?? "");
     setPaymentError("");
@@ -384,7 +442,7 @@ export function SubscriptionsContent() {
 
   const handleMarkAsPaid = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payingSub) return;
+    if (!payingSub || authenticated) return;
     setPaymentError("");
 
     if (!paymentAccountId) {
@@ -402,9 +460,10 @@ export function SubscriptionsContent() {
         const cardId = paymentAccountId.slice(3);
         const card = creditCards.find((c) => c.id === cardId);
         const cardCurrency = card?.currency ?? baseCurrency;
-        const convertedAmount = subCurrency !== cardCurrency
-          ? convertCurrency(payingSub.amount, subCurrency, cardCurrency, fx)
-          : payingSub.amount;
+        const convertedAmount =
+          subCurrency !== cardCurrency
+            ? convertCurrency(payingSub.amount, subCurrency, cardCurrency, fx)
+            : payingSub.amount;
 
         await createLinkedCreditCardCharge(
           {
@@ -413,9 +472,10 @@ export function SubscriptionsContent() {
             amount: Math.round(convertedAmount * 100) / 100,
             merchant: payingSub.name,
             category: "Bills",
-            notes: subCurrency !== cardCurrency
-              ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
-              : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
+            notes:
+              subCurrency !== cardCurrency
+                ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
+                : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
           },
           {
             currency: cardCurrency,
@@ -432,9 +492,10 @@ export function SubscriptionsContent() {
           return;
         }
         const acctCurrency = account.currency;
-        const convertedAmount = subCurrency !== acctCurrency
-          ? convertCurrency(payingSub.amount, subCurrency, acctCurrency, fx)
-          : payingSub.amount;
+        const convertedAmount =
+          subCurrency !== acctCurrency
+            ? convertCurrency(payingSub.amount, subCurrency, acctCurrency, fx)
+            : payingSub.amount;
 
         await createTransaction({
           type: "expense",
@@ -446,9 +507,10 @@ export function SubscriptionsContent() {
           from_account_id: null,
           to_account_id: null,
           merchant: payingSub.name,
-          notes: subCurrency !== acctCurrency
-            ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
-            : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
+          notes:
+            subCurrency !== acctCurrency
+              ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
+              : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
           is_recurring: true,
           recurrence: payingSub.frequency,
         });
@@ -490,67 +552,71 @@ export function SubscriptionsContent() {
         }`}
       >
         <td className="px-4 py-3" data-field="merchant">
-          {(
+          {
             <div className="flex max-w-[200px] items-center gap-1.5">
-              <span className="truncate font-medium text-text-primary" title={sub.name}>{sub.name}</span>
+              <span className="truncate font-medium text-text-primary" title={sub.name}>
+                {sub.name}
+              </span>
               {sub.category && (
                 <span className="shrink-0 rounded-full bg-accent-purple/20 px-2 py-0.5 text-[10px] font-medium text-accent-purple brightness-125">
                   {sub.category}
                 </span>
               )}
             </div>
-          )}
+          }
         </td>
         <td className="px-4 py-3 text-right text-text-primary font-semibold" data-field="amount">
-          {(
+          {
             <>
-              {showBalances ? formatMoney(sub.amount, sub.currency ?? baseCurrency) : HIDDEN_BALANCE}
+              {showBalances
+                ? formatMoney(sub.amount, sub.currency ?? baseCurrency)
+                : HIDDEN_BALANCE}
               <span className="ml-1 text-[10px] font-normal text-text-secondary">
                 /{frequencyLabel(sub.frequency).toLowerCase()}
               </span>
             </>
-          )}
+          }
         </td>
         <td className="px-4 py-3 text-right text-text-secondary" data-field="note">
-          {(
+          {
             <>
               {showBalances
-                ? formatMoney(convertCurrency(subscriptionMonthlyEquivalent(sub.amount, sub.frequency), sub.currency ?? baseCurrency, baseCurrency, fx), baseCurrency)
+                ? formatMoney(
+                    convertCurrency(
+                      subscriptionMonthlyEquivalent(sub.amount, sub.frequency),
+                      sub.currency ?? baseCurrency,
+                      baseCurrency,
+                      fx
+                    ),
+                    baseCurrency
+                  )
                 : HIDDEN_BALANCE}
               <span className="text-[10px]">/mo</span>
             </>
-          )}
+          }
         </td>
         <td className="px-4 py-3 text-right" data-field="date">
-          {(
+          {
             <span
               className={
-                isOverdue
-                  ? "text-red-400"
-                  : isSoon
-                    ? "text-yellow-400"
-                    : "text-text-secondary"
+                isOverdue ? "text-red-400" : isSoon ? "text-yellow-400" : "text-text-secondary"
               }
             >
               {new Date(sub.next_billing + "T00:00:00").toLocaleDateString("en-GB", {
                 month: "short",
                 day: "numeric",
               })}
-              {isOverdue && (
-                <span className="ml-1 text-[10px]">({Math.abs(days)}d overdue)</span>
-              )}
+              {isOverdue && <span className="ml-1 text-[10px]">({Math.abs(days)}d overdue)</span>}
               {isSoon && !isOverdue && (
-                <span className="ml-1 text-[10px]">
-                  ({days === 0 ? "today" : `in ${days}d`})
-                </span>
+                <span className="ml-1 text-[10px]">({days === 0 ? "today" : `in ${days}d`})</span>
               )}
             </span>
-          )}
+          }
         </td>
         <td className="px-4 py-3 text-right" data-field="actions">
-          {(
+          {
             <div className="flex items-center justify-end gap-1">
-              {sub.is_active && (
+              {sub.is_active && !authenticated && (
                 <button
                   onClick={() => openPaymentModal(sub)}
                   className="rounded-lg p-1 text-text-secondary hover:bg-emerald-500/10 hover:text-emerald-400"
@@ -568,14 +634,11 @@ export function SubscriptionsContent() {
                 }`}
                 title={sub.is_active ? "Pause" : "Resume"}
               >
-                {sub.is_active ? (
-                  <Pause className="h-4 w-4" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
+                {sub.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </button>
               <button
-                aria-label="Edit subscription" onClick={() => openEdit(sub)}
+                aria-label="Edit subscription"
+                onClick={() => openEdit(sub)}
                 className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
               >
                 <Pencil className="h-4 w-4" />
@@ -583,11 +646,13 @@ export function SubscriptionsContent() {
               <button
                 onClick={() => handleDelete(sub)}
                 className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-               aria-label="Delete" title="Delete">
+                aria-label="Delete"
+                title="Delete"
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
-          )}
+          }
         </td>
       </tr>
     );
@@ -595,19 +660,31 @@ export function SubscriptionsContent() {
 
   return (
     <>
+      {commandError && (
+        <p role="alert" className="mb-4 rounded-xl bg-red-500/10 p-4 text-sm text-red-400">
+          {commandError}
+        </p>
+      )}
+      {authenticated && (
+        <p className="mb-4 text-sm text-text-secondary">
+          Schedules are planning reminders and do not post expenses or move money. Record an actual
+          payment once in Expenses or Credit Cards, then edit its next billing date here. External
+          notifications and automatic detection are off.
+        </p>
+      )}
       <div data-tour="subscriptions-header">
-      <PageHeader
-        title="Subscriptions"
-        description="Track recurring subscriptions and memberships"
-        action={
-          <button
-            onClick={openAdd}
-            className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5"
-          >
-            <Plus className="h-4 w-4" /> Add Subscription
-          </button>
-        }
-      />
+        <PageHeader
+          title="Subscriptions"
+          description="Track recurring subscriptions and memberships"
+          action={
+            <button
+              onClick={openAdd}
+              className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5"
+            >
+              <Plus className="h-4 w-4" /> Add Subscription
+            </button>
+          }
+        />
       </div>
 
       {/* Summary stats */}
@@ -625,11 +702,7 @@ export function SubscriptionsContent() {
         <StatCard
           title="Active Subs"
           value={activeSubs.length.toString()}
-          subtitle={
-            inactiveSubs.length > 0
-              ? `${inactiveSubs.length} paused`
-              : undefined
-          }
+          subtitle={inactiveSubs.length > 0 ? `${inactiveSubs.length} paused` : undefined}
           icon={<Play className="h-5 w-5" />}
         />
         <StatCard
@@ -643,9 +716,7 @@ export function SubscriptionsContent() {
       {/* Category breakdown */}
       {byCategory.length > 0 && showBalances && (
         <div className="mb-6 rounded-2xl border border-border-subtle bg-bg-secondary p-5">
-          <h3 className="mb-3 text-sm font-semibold text-text-primary">
-            Monthly by Category
-          </h3>
+          <h3 className="mb-3 text-sm font-semibold text-text-primary">Monthly by Category</h3>
           <div className="flex flex-wrap gap-2">
             {byCategory.map(([cat, amt]) => (
               <div
@@ -653,9 +724,7 @@ export function SubscriptionsContent() {
                 className="rounded-xl border border-border-subtle bg-bg-elevated px-3 py-2 text-xs"
               >
                 <span className="text-text-secondary">{cat}</span>
-                <span className="ml-2 font-semibold text-text-primary">
-                  {formatMoney(amt)}/mo
-                </span>
+                <span className="ml-2 font-semibold text-text-primary">{formatMoney(amt)}/mo</span>
               </div>
             ))}
           </div>
@@ -681,7 +750,8 @@ export function SubscriptionsContent() {
                 <div>
                   <p className="text-sm font-medium text-text-primary">{d.merchant}</p>
                   <p className="text-xs text-text-secondary">
-                    ~{formatMoney(d.avgAmount, d.currency as CurrencyCode)} / {d.frequency} &middot; {d.occurrences} occurrences &middot; {d.confidence}% confidence
+                    ~{formatMoney(d.avgAmount, d.currency as CurrencyCode)} / {d.frequency} &middot;{" "}
+                    {d.occurrences} occurrences &middot; {d.confidence}% confidence
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -702,7 +772,9 @@ export function SubscriptionsContent() {
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ merchant: d.merchant }),
                         });
-                      } catch { /* silent */ }
+                      } catch {
+                        /* silent */
+                      }
                     }}
                     className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
                     title="Dismiss — won't show again"
@@ -742,17 +814,33 @@ export function SubscriptionsContent() {
                 <table className="money-ledger-list money-subscription-list w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
                   <thead>
                     <tr className="border-b border-border-subtle bg-bg-secondary">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("name")}>
-                        Subscription<SortIcon col="name" />
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("name")}
+                      >
+                        Subscription
+                        <SortIcon col="name" />
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("amount")}>
-                        Amount<SortIcon col="amount" />
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("amount")}
+                      >
+                        Amount
+                        <SortIcon col="amount" />
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("monthly")}>
-                        Monthly Eq.<SortIcon col="monthly" />
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("monthly")}
+                      >
+                        Monthly Eq.
+                        <SortIcon col="monthly" />
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("next")}>
-                        Next Billing<SortIcon col="next" />
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("next")}
+                      >
+                        Next Billing
+                        <SortIcon col="next" />
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
                         Actions
@@ -775,17 +863,33 @@ export function SubscriptionsContent() {
                 <table className="money-ledger-list money-subscription-list w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
                   <thead>
                     <tr className="border-b border-border-subtle bg-bg-secondary">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("name")}>
-                        Subscription<SortIcon col="name" />
+                      <th
+                        className="px-4 py-3 text-left text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("name")}
+                      >
+                        Subscription
+                        <SortIcon col="name" />
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("amount")}>
-                        Amount<SortIcon col="amount" />
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("amount")}
+                      >
+                        Amount
+                        <SortIcon col="amount" />
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("monthly")}>
-                        Monthly Eq.<SortIcon col="monthly" />
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("monthly")}
+                      >
+                        Monthly Eq.
+                        <SortIcon col="monthly" />
                       </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary" onClick={() => toggleSort("next")}>
-                        Next Billing<SortIcon col="next" />
+                      <th
+                        className="px-4 py-3 text-right text-xs font-medium text-text-secondary cursor-pointer select-none hover:text-text-primary"
+                        onClick={() => toggleSort("next")}
+                      >
+                        Next Billing
+                        <SortIcon col="next" />
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
                         Actions
@@ -813,25 +917,35 @@ export function SubscriptionsContent() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-1">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="subscriptions-field-1"
+              >
                 Name
               </label>
               <input
                 type="text"
-                aria-label="Name" value={name}
+                aria-label="Name"
+                value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Netflix, Spotify…"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-1"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="subscriptions-field-1"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-2">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="subscriptions-field-2"
+              >
                 Category
               </label>
               <select
-                aria-label="Category" value={category}
+                aria-label="Category"
+                value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-2"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="subscriptions-field-2"
               >
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
@@ -843,26 +957,36 @@ export function SubscriptionsContent() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-3">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="subscriptions-field-3"
+              >
                 Amount ({currency})
               </label>
               <input
                 type="number"
                 step="0.01"
-                aria-label="Amount" value={amount}
+                aria-label="Amount"
+                value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="9.99"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-3"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="subscriptions-field-3"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-4">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="subscriptions-field-4"
+              >
                 Currency
               </label>
               <select
-                aria-label="Currency" value={currency}
+                aria-label="Currency"
+                value={currency}
                 onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-4"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="subscriptions-field-4"
               >
                 <option value="GBP">GBP</option>
                 <option value="EUR">EUR</option>
@@ -874,15 +998,18 @@ export function SubscriptionsContent() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-5">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="subscriptions-field-5"
+              >
                 Frequency
               </label>
               <select
-                aria-label="Frequency" value={frequency}
-                onChange={(e) =>
-                  setFrequency(e.target.value as RecurrenceFrequency)
-                }
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-5"
+                aria-label="Frequency"
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value as RecurrenceFrequency)}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="subscriptions-field-5"
               >
                 <option value="weekly">Weekly</option>
                 <option value="bi-weekly">Bi-weekly</option>
@@ -893,14 +1020,19 @@ export function SubscriptionsContent() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-6">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="subscriptions-field-6"
+              >
                 Next Billing Date
               </label>
               <input
                 type="date"
-                aria-label="Next billing date" value={nextBilling}
+                aria-label="Next billing date"
+                value={nextBilling}
                 onChange={(e) => setNextBilling(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-6"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="subscriptions-field-6"
               />
             </div>
             <div className="flex items-end">
@@ -916,28 +1048,39 @@ export function SubscriptionsContent() {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-7">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="subscriptions-field-7"
+            >
               Notes (optional)
             </label>
             <input
               type="text"
-              aria-label="Notes" value={notes}
+              aria-label="Notes"
+              value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Shared with family, annual plan…"
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-7"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="subscriptions-field-7"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="subscriptions-field-8">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="subscriptions-field-8"
+            >
               Default pay from (account or card)
             </label>
             <p className="mb-2 text-[11px] text-text-secondary">
-              Link this subscription to an account or credit card. When you mark as paid, this will be pre-selected (you can still change it).
+              Link this subscription to an account or credit card. When you mark as paid, this will
+              be pre-selected (you can still change it).
             </p>
             <select
-              aria-label="Default pay from" value={defaultPaymentAccountId}
+              aria-label="Default pay from"
+              value={defaultPaymentAccountId}
               onChange={(e) => setDefaultPaymentAccountId(e.target.value)}
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-8"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="subscriptions-field-8"
             >
               <option value="">None — choose each time</option>
               {accounts.length > 0 && (
@@ -961,9 +1104,7 @@ export function SubscriptionsContent() {
             </select>
           </div>
           {formError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {formError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -1006,28 +1147,38 @@ export function SubscriptionsContent() {
               <div className="text-sm text-text-secondary mb-1">Subscription</div>
               <div className="text-lg font-semibold text-text-primary">{payingSub.name}</div>
               <div className="mt-2 text-sm text-text-secondary">
-                Amount: <span className="font-semibold text-text-primary">{formatMoney(payingSub.amount, payingSub.currency ?? baseCurrency)}</span>
+                Amount:{" "}
+                <span className="font-semibold text-text-primary">
+                  {formatMoney(payingSub.amount, payingSub.currency ?? baseCurrency)}
+                </span>
               </div>
               {(() => {
                 const isCC = paymentAccountId.startsWith("cc:");
                 const subCur = payingSub.currency ?? baseCurrency;
                 if (isCC) {
-                  const card = creditCards.find(c => c.id === paymentAccountId.slice(3));
+                  const card = creditCards.find((c) => c.id === paymentAccountId.slice(3));
                   if (card && card.currency !== subCur) {
                     const converted = convertCurrency(payingSub.amount, subCur, card.currency, fx);
                     return (
                       <div className="mt-1 text-sm text-yellow-400">
-                        ≈ {formatMoney(Math.round(converted * 100) / 100, card.currency)} will be charged
+                        ≈ {formatMoney(Math.round(converted * 100) / 100, card.currency)} will be
+                        charged
                       </div>
                     );
                   }
                 } else {
-                  const selectedAcct = accounts.find(a => a.id === paymentAccountId);
+                  const selectedAcct = accounts.find((a) => a.id === paymentAccountId);
                   if (selectedAcct && selectedAcct.currency !== subCur) {
-                    const converted = convertCurrency(payingSub.amount, subCur, selectedAcct.currency, fx);
+                    const converted = convertCurrency(
+                      payingSub.amount,
+                      subCur,
+                      selectedAcct.currency,
+                      fx
+                    );
                     return (
                       <div className="mt-1 text-sm text-yellow-400">
-                        ≈ {formatMoney(Math.round(converted * 100) / 100, selectedAcct.currency)} will be deducted
+                        ≈ {formatMoney(Math.round(converted * 100) / 100, selectedAcct.currency)}{" "}
+                        will be deducted
                       </div>
                     );
                   }
@@ -1080,9 +1231,15 @@ export function SubscriptionsContent() {
             )}
 
             <div className="rounded-lg border border-accent-blue/20 bg-accent-blue/5 px-4 py-2.5 text-xs text-text-secondary">
-              This will {paymentAccountId.startsWith("cc:") ? "add a credit card charge" : "create an expense transaction"} and advance the next billing date to{" "}
+              This will{" "}
+              {paymentAccountId.startsWith("cc:")
+                ? "add a credit card charge"
+                : "create an expense transaction"}{" "}
+              and advance the next billing date to{" "}
               <span className="font-semibold text-text-primary">
-                {new Date(advanceNextBilling(payingSub.next_billing, payingSub.frequency) + "T00:00:00").toLocaleDateString("en-GB", {
+                {new Date(
+                  advanceNextBilling(payingSub.next_billing, payingSub.frequency) + "T00:00:00"
+                ).toLocaleDateString("en-GB", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",

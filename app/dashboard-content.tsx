@@ -363,11 +363,13 @@ export function DashboardContent({
     subscriptions,
   ]);
 
-  const portfolioPricesMissing = holdings.some(
-    (h) =>
-      !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()) &&
-      !(stockQuotes[h.symbol.toUpperCase()]?.price > 0)
-  );
+  const portfolioPricesMissing =
+    (AUTHENTICATED_APP && holdings.length > 0) ||
+    holdings.some(
+      (h) =>
+        !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()) &&
+        !(stockQuotes[h.symbol.toUpperCase()]?.price > 0)
+    );
   const investmentCashBase = AUTHENTICATED_APP
     ? accounts
         .filter((a) => a.type === "investing")
@@ -591,7 +593,7 @@ export function DashboardContent({
   const netWorthBase = computeNetWorthBase({
     cashBase: cashTotalBase,
     holdingsBase: portfolioMarketValueBase,
-    dividendsBase: totalDividendsBase,
+    dividendsBase: AUTHENTICATED_APP ? 0 : totalDividendsBase,
     creditCardDebtBase: ccDebtBase + (otherDebtTotal || 0),
   });
 
@@ -856,7 +858,7 @@ export function DashboardContent({
                   Total net worth
                 </p>
                 <p className="mt-4 break-words text-4xl font-semibold leading-none tracking-[-0.065em] sm:text-5xl lg:text-6xl">
-                  {m(netWorthBase)}
+                  {AUTHENTICATED_APP && portfolioPricesMissing ? "Incomplete" : m(netWorthBase)}
                 </p>
               </div>
               <div className="mt-10 flex flex-wrap items-center gap-3 text-xs font-semibold">
@@ -896,7 +898,9 @@ export function DashboardContent({
                     Investments
                   </p>
                   <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-text-primary">
-                    {m(portfolioMarketValueBase)}
+                    {AUTHENTICATED_APP && portfolioPricesMissing
+                      ? "Value unavailable"
+                      : m(portfolioMarketValueBase)}
                   </p>
                 </div>
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card-bg)] text-accent-purple">
@@ -987,6 +991,13 @@ export function DashboardContent({
         </div>
       )}
 
+      {AUTHENTICATED_APP && portfolioPricesMissing && (
+        <div role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
+          Current investment prices are unavailable. Net worth is incomplete; known cash minus debts
+          is {m(netWorthBase)}. Position costs and dividend history are not additional cash or
+          market value.
+        </div>
+      )}
       {unresolvedDebtCount > 0 && (
         <div role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
           {unresolvedDebtCount} debt account(s) need reconciliation and are excluded from the

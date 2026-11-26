@@ -409,7 +409,11 @@ export async function createGoal(
   linkedAccounts?: Array<string | GoalAccountLinkInput>
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Goal>(
+      "goal.create",
+      { ...goal, ...(linkedAccounts !== undefined ? { linked_accounts: linkedAccounts } : {}) },
+      "goals"
+    );
   }
   if (isDemoModeRoute()) {
     const ids = linkedAccounts?.map((l) => (typeof l === "string" ? l : l.account_id));
@@ -436,7 +440,16 @@ export async function updateGoal(
   linkedAccounts?: Array<string | GoalAccountLinkInput>
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Goal>(
+      "goal.update",
+      {
+        ...updates,
+        id,
+        version: await mainVersion("goals", id),
+        ...(linkedAccounts !== undefined ? { linked_accounts: linkedAccounts } : {}),
+      },
+      "goals"
+    );
   }
   if (isDemoModeRoute()) {
     const ids = linkedAccounts?.map((l) => (typeof l === "string" ? l : l.account_id));
@@ -464,7 +477,7 @@ export async function updateGoal(
 
 export async function deleteGoal(id: string) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("goal.delete", { id, version: await mainVersion("goals", id) });
   }
   if (isDemoModeRoute()) {
     demoDeleteGoal(id);
@@ -480,7 +493,12 @@ export async function addGoalAccountAllocation(
   amountToAdd: number
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("goal.increment", {
+      id: goalId,
+      version: await mainVersion("goals", goalId),
+      account_id: accountId,
+      amount: amountToAdd,
+    });
   }
   if (isDemoModeRoute()) {
     demoAddGoalAccountAllocation(goalId, accountId, amountToAdd);
@@ -535,7 +553,11 @@ export async function getAllocationPlans() {
 
 export async function setActivePlan(id: string) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<AllocationPlan>(
+      "allocation.activate",
+      { id, version: await mainVersion("plans", id) },
+      "plans"
+    );
   }
   if (isDemoModeRoute()) return demoSetActivePlan(id);
   // Deactivate all, then activate the chosen one
@@ -557,7 +579,7 @@ export async function createAllocationPlan(
   plan: Omit<AllocationPlan, "id" | "created_at" | "user_id">
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<AllocationPlan>("allocation.create", { ...plan }, "plans");
   }
   if (isDemoModeRoute()) return demoCreateAllocationPlan(plan);
   const { data, error } = await supabase
@@ -571,7 +593,11 @@ export async function createAllocationPlan(
 
 export async function updateAllocationPlan(id: string, updates: Partial<AllocationPlan>) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<AllocationPlan>(
+      "allocation.update",
+      { ...updates, id, version: await mainVersion("plans", id) },
+      "plans"
+    );
   }
   if (isDemoModeRoute()) return demoUpdateAllocationPlan(id, updates);
   const { data, error } = await supabase
@@ -586,7 +612,7 @@ export async function updateAllocationPlan(id: string, updates: Partial<Allocati
 
 export async function deleteAllocationPlan(id: string) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("allocation.delete", { id, version: await mainVersion("plans", id) });
   }
   if (isDemoModeRoute()) {
     demoDeleteAllocationPlan(id);
@@ -615,7 +641,8 @@ export async function getSettings() {
 
 export async function upsertSettings(settings: Partial<Settings>) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    await mainCommand("settings.upsert", { ...settings });
+    return (await getMainData()).settings!;
   }
   if (isDemoModeRoute()) return demoUpsertSettings(settings);
   const existing = await getSettings();
@@ -860,7 +887,7 @@ export async function createHolding(holding: {
   cost_currency?: Holding["cost_currency"];
 }) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Holding>("holding.create", { ...holding }, "holdings");
   }
   if (isDemoModeRoute())
     return demoCreateHolding({ ...holding, cost_currency: holding.cost_currency ?? "USD" });
@@ -888,7 +915,11 @@ export async function updateHolding(
   }
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Holding>(
+      "holding.update",
+      { ...updates, id, version: await mainVersion("holdings", id) },
+      "holdings"
+    );
   }
   if (isDemoModeRoute()) return demoUpdateHolding(id, updates);
   const { data, error } = await supabase
@@ -903,7 +934,7 @@ export async function updateHolding(
 
 export async function deleteHolding(id: string) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("holding.delete", { id, version: await mainVersion("holdings", id) });
   }
   if (isDemoModeRoute()) {
     demoDeleteHolding(id);
@@ -976,7 +1007,7 @@ export async function getSubscriptions() {
 
 export async function createSubscription(sub: Omit<Subscription, "id" | "created_at" | "user_id">) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Subscription>("subscription.create", { ...sub }, "subscriptions");
   }
   if (isDemoModeRoute()) return demoCreateSubscription(sub);
   const { data, error } = await supabase
@@ -993,7 +1024,11 @@ export async function updateSubscription(
   updates: Partial<Omit<Subscription, "id" | "created_at" | "user_id">>
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Subscription>(
+      "subscription.update",
+      { ...updates, id, version: await mainVersion("subscriptions", id) },
+      "subscriptions"
+    );
   }
   if (isDemoModeRoute()) return demoUpdateSubscription(id, updates);
   const { data, error } = await supabase
@@ -1008,7 +1043,10 @@ export async function updateSubscription(
 
 export async function deleteSubscription(id: string) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("subscription.delete", {
+      id,
+      version: await mainVersion("subscriptions", id),
+    });
   }
   if (isDemoModeRoute()) {
     demoDeleteSubscription(id);
@@ -1036,7 +1074,7 @@ export async function getDividends() {
 
 export async function createDividend(div: Omit<Dividend, "id" | "created_at" | "user_id">) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Dividend>("dividend.create", { ...div }, "dividends");
   }
   if (isDemoModeRoute()) return demoCreateDividend({ ...div, reinvested: div.reinvested ?? false });
   const { data, error } = await supabase
@@ -1053,7 +1091,11 @@ export async function updateDividend(
   updates: Partial<Omit<Dividend, "id" | "created_at" | "user_id">>
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommandRow<Dividend>(
+      "dividend.update",
+      { ...updates, id, version: await mainVersion("dividends", id) },
+      "dividends"
+    );
   }
   if (isDemoModeRoute()) return demoUpdateDividend(id, updates);
   const { data, error } = await supabase
@@ -1068,7 +1110,7 @@ export async function updateDividend(
 
 export async function deleteDividend(id: string) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("dividend.delete", { id, version: await mainVersion("dividends", id) });
   }
   if (isDemoModeRoute()) {
     demoDeleteDividend(id);
