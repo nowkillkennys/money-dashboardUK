@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { useMoneyData } from "../hooks/use-money-data";
@@ -33,6 +33,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
+  recordSubscriptionPayment,
   createSubscription,
   updateSubscription,
   deleteSubscription,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/money/queries";
 import type { Subscription, RecurrenceFrequency, CurrencyCode } from "@/lib/money/database.types";
 import { convertCurrency } from "@/lib/money/fx";
+import { advanceSubscriptionBilling } from "@/lib/money/subscription-billing";
 import { subscriptionMonthlyEquivalent } from "@/lib/money/subscription-costs";
 
 /* ------------------------------------------------------------------ */
@@ -136,6 +138,19 @@ export function SubscriptionsContent() {
   const [payingSub, setPayingSub] = useState<Subscription | null>(null);
   const [paymentAccountId, setPaymentAccountId] = useState("");
   const [paymentError, setPaymentError] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [paymentPending, setPaymentPending] = useState(false);
+  const [paymentNextBilling, setPaymentNextBilling] = useState<string | null>(null);
+  const paymentInFlight = useRef(false);
+  const [paymentSources, setPaymentSources] = useState<
+    Array<{ id: string; name: string; currency: CurrencyCode; version?: number }>
+  >([]);
+  const closePaymentModal = () => {
+    if (paymentInFlight.current) return;
+    setShowPaymentModal(false);
+    setPayingSub(null);
+    setPaymentError("");
+  };
 
   /* Inline edit state */
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
@@ -413,36 +428,54 @@ export function SubscriptionsContent() {
     }
   };
 
-  const advanceNextBilling = (currentDate: string, freq: RecurrenceFrequency): string => {
-    const date = new Date(currentDate + "T00:00:00");
-    switch (freq) {
-      case "weekly":
-        date.setDate(date.getDate() + 7);
-        break;
-      case "bi-weekly":
-        date.setDate(date.getDate() + 14);
-        break;
-      case "monthly":
-        date.setMonth(date.getMonth() + 1);
-        break;
-      case "yearly":
-        date.setFullYear(date.getFullYear() + 1);
-        break;
-    }
-    return date.toISOString().split("T")[0];
-  };
-
   const openPaymentModal = (sub: Subscription) => {
-    if (authenticated) return;
-    setPayingSub(sub);
-    setPaymentAccountId(sub.payment_account_id ?? "");
-    setPaymentError("");
+    const sources = [
+      ...accounts
+        .filter((a) => !a.archived)
+        .map((a) => ({
+          id: a.id,
+          name: `${a.name} (${a.type}, ${a.currency})`,
+          currency: a.currency,
+          version: a.version,
+        })),
+      ...creditCards
+        .filter((c) => !c.archived)
+        .map((c) => ({
+          id: `cc:${c.id}`,
+          name: `${c.name} (${c.currency})`,
+          currency: c.currency,
+          version: c.version,
+        })),
+    ];
+    setPaymentSources(sources);
+    setPayingSub({ ...sub });
+    setPaymentAccountId(
+      sources.find((source) => source.id.toLowerCase() === sub.payment_account_id?.toLowerCase())
+        ?.id ?? ""
+    );
+    setPaymentDate(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Europe/London",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date())
+    );
+    try {
+      setPaymentNextBilling(advanceSubscriptionBilling(sub.next_billing, sub.frequency));
+      setPaymentError("");
+    } catch {
+      setPaymentNextBilling(null);
+      setPaymentError(
+        "This schedule cannot advance to a valid next billing date. Edit the schedule before recording payment."
+      );
+    }
     setShowPaymentModal(true);
   };
 
   const handleMarkAsPaid = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payingSub || authenticated) return;
+    if (!payingSub || paymentInFlight.current || !paymentNextBilling) return;
     setPaymentError("");
 
     if (!paymentAccountId) {
@@ -450,88 +483,105 @@ export function SubscriptionsContent() {
       return;
     }
 
+    const source = paymentSources.find((item) => item.id === paymentAccountId);
+    if (!source || !paymentDate) {
+      setPaymentError("Choose an active account or card and a payment date.");
+      return;
+    }
     const isCC = paymentAccountId.startsWith("cc:");
 
-    setSaving(true);
+    paymentInFlight.current = true;
+    setPaymentPending(true);
     try {
-      const subCurrency = payingSub.currency ?? baseCurrency;
+      if (authenticated) {
+        await recordSubscriptionPayment(payingSub, source, paymentDate);
+      } else {
+        const subCurrency = payingSub.currency ?? baseCurrency;
 
-      if (isCC) {
-        const cardId = paymentAccountId.slice(3);
-        const card = creditCards.find((c) => c.id === cardId);
-        const cardCurrency = card?.currency ?? baseCurrency;
-        const convertedAmount =
-          subCurrency !== cardCurrency
-            ? convertCurrency(payingSub.amount, subCurrency, cardCurrency, fx)
-            : payingSub.amount;
+        if (isCC) {
+          const cardId = paymentAccountId.slice(3);
+          const card = creditCards.find((c) => c.id === cardId);
+          const cardCurrency = card?.currency ?? baseCurrency;
+          const convertedAmount =
+            subCurrency !== cardCurrency
+              ? convertCurrency(payingSub.amount, subCurrency, cardCurrency, fx)
+              : payingSub.amount;
 
-        await createLinkedCreditCardCharge(
-          {
-            card_id: cardId,
-            date: todayEST(),
+          await createLinkedCreditCardCharge(
+            {
+              card_id: cardId,
+              date: paymentDate,
+              amount: Math.round(convertedAmount * 100) / 100,
+              merchant: payingSub.name,
+              category: "Bills",
+              notes:
+                subCurrency !== cardCurrency
+                  ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
+                  : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
+            },
+            {
+              currency: cardCurrency,
+              cardName: card?.name ?? "Credit Card",
+              is_recurring: true,
+              recurrence: payingSub.frequency,
+            }
+          );
+        } else {
+          const account = accounts.find((a) => a.id === paymentAccountId);
+          if (!account) {
+            setPaymentError("Invalid account");
+            return;
+          }
+          const acctCurrency = account.currency;
+          const convertedAmount =
+            subCurrency !== acctCurrency
+              ? convertCurrency(payingSub.amount, subCurrency, acctCurrency, fx)
+              : payingSub.amount;
+
+          await createTransaction({
+            type: "expense",
+            date: paymentDate,
             amount: Math.round(convertedAmount * 100) / 100,
-            merchant: payingSub.name,
+            currency: acctCurrency,
             category: "Bills",
+            account_id: paymentAccountId,
+            from_account_id: null,
+            to_account_id: null,
+            merchant: payingSub.name,
             notes:
-              subCurrency !== cardCurrency
+              subCurrency !== acctCurrency
                 ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
                 : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
-          },
-          {
-            currency: cardCurrency,
-            cardName: card?.name ?? "Credit Card",
             is_recurring: true,
             recurrence: payingSub.frequency,
-          }
-        );
-      } else {
-        const account = accounts.find((a) => a.id === paymentAccountId);
-        if (!account) {
-          setPaymentError("Invalid account");
-          setSaving(false);
-          return;
+          });
         }
-        const acctCurrency = account.currency;
-        const convertedAmount =
-          subCurrency !== acctCurrency
-            ? convertCurrency(payingSub.amount, subCurrency, acctCurrency, fx)
-            : payingSub.amount;
 
-        await createTransaction({
-          type: "expense",
-          date: todayEST(),
-          amount: Math.round(convertedAmount * 100) / 100,
-          currency: acctCurrency,
-          category: "Bills",
-          account_id: paymentAccountId,
-          from_account_id: null,
-          to_account_id: null,
-          merchant: payingSub.name,
-          notes:
-            subCurrency !== acctCurrency
-              ? `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()}) — ${formatMoney(payingSub.amount, subCurrency)} converted`
-              : `Subscription payment (${frequencyLabel(payingSub.frequency).toLowerCase()})`,
-          is_recurring: true,
-          recurrence: payingSub.frequency,
-        });
+        // Advance next billing date
+        const newNextBilling = advanceSubscriptionBilling(
+          payingSub.next_billing,
+          payingSub.frequency
+        );
+        await updateSubscription(payingSub.id, { next_billing: newNextBilling });
       }
-
-      // Advance next billing date
-      const newNextBilling = advanceNextBilling(payingSub.next_billing, payingSub.frequency);
-      await updateSubscription(payingSub.id, { next_billing: newNextBilling });
-
-      await refresh();
       setShowPaymentModal(false);
       setPayingSub(null);
+      await refresh();
     } catch (err: unknown) {
-      setPaymentError(err instanceof Error ? err.message : "Failed to process payment");
+      const message = err instanceof Error ? err.message : "Failed to record payment";
+      setPaymentError(
+        /stale|conflict|version|out.of.date|changed/i.test(message)
+          ? `${message} Refresh and review the subscription and payment source before trying again.`
+          : message
+      );
     } finally {
-      setSaving(false);
+      paymentInFlight.current = false;
+      setPaymentPending(false);
     }
   };
 
   /* Render */
-  if (loading || !fxReady) {
+  if ((loading || !fxReady) && !showPaymentModal) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-accent-purple" />
@@ -616,10 +666,11 @@ export function SubscriptionsContent() {
         <td className="px-4 py-3 text-right" data-field="actions">
           {
             <div className="flex items-center justify-end gap-1">
-              {sub.is_active && !authenticated && (
+              {sub.is_active && (
                 <button
                   onClick={() => openPaymentModal(sub)}
                   className="rounded-lg p-1 text-text-secondary hover:bg-emerald-500/10 hover:text-emerald-400"
+                  aria-label="Mark as Paid"
                   title="Mark as Paid"
                 >
                   <Check className="h-4 w-4" />
@@ -667,9 +718,9 @@ export function SubscriptionsContent() {
       )}
       {authenticated && (
         <p className="mb-4 text-sm text-text-secondary">
-          Schedules are planning reminders and do not post expenses or move money. Record an actual
-          payment once in Expenses or Credit Cards, then edit its next billing date here. External
-          notifications and automatic detection are off.
+          Schedules plan recurring bills such as Netflix, mobile plans, broadband and memberships.
+          Mark as Paid records a payment you already made and advances the schedule; it does not
+          send money. External notifications and automatic detection are off.
         </p>
       )}
       <div data-tour="subscriptions-header">
@@ -1131,16 +1182,7 @@ export function SubscriptionsContent() {
       </Modal>
 
       {/* Payment Modal */}
-      <Modal
-        open={showPaymentModal}
-        onClose={() => {
-          setShowPaymentModal(false);
-          setPayingSub(null);
-          setPaymentAccountId("");
-          setPaymentError("");
-        }}
-        title="Mark as Paid"
-      >
+      <Modal open={showPaymentModal} onClose={closePaymentModal} title="Mark as Paid">
         {payingSub && (
           <form onSubmit={handleMarkAsPaid} className="space-y-4">
             <div className="rounded-lg border border-border-subtle bg-bg-elevated p-4">
@@ -1149,12 +1191,15 @@ export function SubscriptionsContent() {
               <div className="mt-2 text-sm text-text-secondary">
                 Amount:{" "}
                 <span className="font-semibold text-text-primary">
-                  {formatMoney(payingSub.amount, payingSub.currency ?? baseCurrency)}
+                  {showBalances
+                    ? formatMoney(payingSub.amount, payingSub.currency ?? baseCurrency)
+                    : HIDDEN_BALANCE}
                 </span>
               </div>
               {(() => {
                 const isCC = paymentAccountId.startsWith("cc:");
                 const subCur = payingSub.currency ?? baseCurrency;
+                if (!showBalances || authenticated) return null;
                 if (isCC) {
                   const card = creditCards.find((c) => c.id === paymentAccountId.slice(3));
                   if (card && card.currency !== subCur) {
@@ -1188,62 +1233,71 @@ export function SubscriptionsContent() {
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary">
-                Pay from {payingSub.payment_account_id ? "(change if needed)" : ""}
+              <label
+                htmlFor="subscription-payment-date"
+                className="mb-1 block text-xs font-medium text-text-secondary"
+              >
+                Payment date
               </label>
-              {accounts.length === 0 && creditCards.length === 0 ? (
-                <p className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-2.5 text-xs text-yellow-400">
-                  Create an account or credit card first.
+              <input
+                id="subscription-payment-date"
+                type="date"
+                required
+                disabled={paymentPending}
+                value={paymentDate}
+                onChange={(e) => setPaymentDate(e.target.value)}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="subscription-payment-source"
+                className="mb-1 block text-xs font-medium text-text-secondary"
+              >
+                Pay from
+              </label>
+              <select
+                id="subscription-payment-source"
+                disabled={paymentPending}
+                value={paymentAccountId}
+                onChange={(e) => setPaymentAccountId(e.target.value)}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary"
+              >
+                <option value="">Select account or card…</option>
+                {paymentSources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name}
+                  </option>
+                ))}
+              </select>
+              {paymentSources.length === 0 && (
+                <p className="mt-2 text-xs text-yellow-400">
+                  Create an active account or credit card first.
                 </p>
-              ) : (
-                <select
-                  value={paymentAccountId}
-                  onChange={(e) => setPaymentAccountId(e.target.value)}
-                  className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
-                >
-                  <option value="">Select account or card…</option>
-                  {accounts.length > 0 && (
-                    <optgroup label="Accounts">
-                      {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.name} ({a.type}, {a.currency})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {creditCards.length > 0 && (
-                    <optgroup label="Credit Cards">
-                      {creditCards.map((cc) => (
-                        <option key={cc.id} value={`cc:${cc.id}`}>
-                          {cc.name} ({cc.currency})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
               )}
             </div>
 
             {paymentError && (
-              <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
                 {paymentError}
               </p>
             )}
 
             <div className="rounded-lg border border-accent-blue/20 bg-accent-blue/5 px-4 py-2.5 text-xs text-text-secondary">
-              This will{" "}
+              This records an actual payment only; it does not send money. It will{" "}
               {paymentAccountId.startsWith("cc:")
-                ? "add a credit card charge"
+                ? "add one credit card charge with one linked expense"
                 : "create an expense transaction"}{" "}
-              and advance the next billing date to{" "}
+              and advance the next billing date by one cycle to{" "}
               <span className="font-semibold text-text-primary">
-                {new Date(
-                  advanceNextBilling(payingSub.next_billing, payingSub.frequency) + "T00:00:00"
-                ).toLocaleDateString("en-GB", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
+                {paymentNextBilling
+                  ? new Date(paymentNextBilling + "T00:00:00Z").toLocaleDateString("en-GB", {
+                      timeZone: "UTC",
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })
+                  : "an unavailable date"}
               </span>
               .
             </div>
@@ -1251,22 +1305,18 @@ export function SubscriptionsContent() {
             <div className="flex gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowPaymentModal(false);
-                  setPayingSub(null);
-                  setPaymentAccountId("");
-                  setPaymentError("");
-                }}
+                onClick={closePaymentModal}
+                disabled={paymentPending}
                 className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={saving || (accounts.length === 0 && creditCards.length === 0)}
+                disabled={paymentPending || paymentSources.length === 0 || !paymentNextBilling}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
               >
-                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {paymentPending && <Loader2 className="h-4 w-4 animate-spin" />}
                 Mark as Paid
               </button>
             </div>

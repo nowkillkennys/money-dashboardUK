@@ -59,6 +59,21 @@ test("native goals, schedules, preferences and investment records persist withou
   const errors: string[] = [],
     external: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  // Wait for authenticated data before another hard navigation can cancel it.
+  const navigateLoaded = async (path: string) => {
+    const response = page.waitForResponse(
+      (r) => r.url().endsWith("/api/workspace/main-data") && r.ok()
+    );
+    await page.goto(path);
+    await (await response).finished();
+  };
+  const reloadLoaded = async () => {
+    const response = page.waitForResponse(
+      (r) => r.url().endsWith("/api/workspace/main-data") && r.ok()
+    );
+    await page.reload();
+    await (await response).finished();
+  };
   await page.route("**/*", (route) => {
     if (new URL(route.request().url()).origin !== "http://browser-workspace:3000") {
       external.push(route.request().url());
@@ -69,7 +84,11 @@ test("native goals, schedules, preferences and investment records persist withou
   await page.goto("/");
   await page.getByLabel("Username", { exact: true }).fill(username);
   await page.getByLabel("Password", { exact: true }).fill(password);
+  const initialData = page.waitForResponse(
+    (r) => r.url().endsWith("/api/workspace/main-data") && r.ok()
+  );
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await (await initialData).finished();
   await expect(page.getByText(`Signed in as ${username}`, { exact: false })).toBeVisible();
   const bank = await page.request.post("/api/workspace/main-commands", {
     headers: { "Idempotency-Key": randomUUID(), Origin: "http://browser-workspace:3000" },
@@ -81,22 +100,22 @@ test("native goals, schedules, preferences and investment records persist withou
     },
   });
   expect(bank.ok()).toBeTruthy();
-  await page.goto("/goals");
+  await navigateLoaded("/goals");
   await page.getByRole("button", { name: "Add Goal", exact: true }).first().click();
   await page.getByLabel("Goal Name", { exact: true }).fill("Synthetic reserve");
   await page.getByLabel("Target Amount", { exact: true }).fill("500");
   await page.getByRole("button", { name: "Create Goal", exact: true }).click();
   await expect(page.getByText("Synthetic reserve", { exact: true }).first()).toBeVisible();
-  await page.reload();
+  await reloadLoaded();
   await expect(page.getByText("Synthetic reserve", { exact: true }).first()).toBeVisible();
-  await page.goto("/subscriptions");
+  await navigateLoaded("/subscriptions");
   await page.getByRole("button", { name: "Add Subscription", exact: true }).first().click();
   await page.getByLabel("Name", { exact: true }).fill("Synthetic scheduled bill");
   await page.getByLabel("Amount", { exact: true }).fill("12.34");
   await page.getByLabel("Next billing date", { exact: true }).fill("2026-12-01");
   await page.getByRole("button", { name: "Add Subscription", exact: true }).last().click();
   await expect(page.getByText("Synthetic scheduled bill", { exact: true }).first()).toBeVisible();
-  await page.goto("/stocks");
+  await navigateLoaded("/stocks");
   await page.getByRole("button", { name: "Add position", exact: true }).click();
   await page.getByLabel("Symbol", { exact: true }).fill("SYNTH");
   await page.getByLabel("Shares", { exact: true }).fill("1.123456");
@@ -108,7 +127,7 @@ test("native goals, schedules, preferences and investment records persist withou
   await page.getByLabel("Date", { exact: true }).fill("2026-11-26");
   await page.getByRole("button", { name: "Save dividend", exact: true }).click();
   await expect(page.getByText("£4.25", { exact: true })).toBeVisible();
-  await page.reload();
+  await reloadLoaded();
   await expect(page.getByText("£100.01", { exact: true })).toBeVisible();
   const data = await (await page.request.get("/api/workspace/main-data")).json();
   expect(data.goals).toHaveLength(1);
@@ -117,10 +136,10 @@ test("native goals, schedules, preferences and investment records persist withou
   expect(data.dividends).toHaveLength(1);
   expect(data.transactions).toHaveLength(0);
   expect(data.balances[data.accounts[0].id]).toBe(1000);
-  await page.goto("/");
+  await navigateLoaded("/");
   await expect(page.getByText("Incomplete", { exact: true })).toBeVisible();
   await expect(page.getByText(/known cash minus debts is/)).toContainText("£1,000.00");
-  await page.goto("/settings");
+  await navigateLoaded("/settings");
   await page.locator("#settings-personalization > summary").click();
   await page.getByLabel("Display Name", { exact: true }).fill("Synthetic preference");
   await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -151,14 +170,14 @@ test("native goals, schedules, preferences and investment records persist withou
   expect(
     (await (await page.request.get("/api/workspace/main-data")).json()).settings.display_name
   ).toBe("Another tab");
-  await page.goto("/stocks");
+  await navigateLoaded("/stocks");
   await page.evaluate(() => localStorage.setItem("money_show_balances", "0"));
-  await page.reload();
+  await reloadLoaded();
   await expect(page.getByText("£100.01", { exact: true })).toHaveCount(0);
   await expect(page.getByText("£4.25", { exact: true })).toHaveCount(0);
   await page.evaluate(() => localStorage.removeItem("money_show_balances"));
   for (const route of ["/goals", "/subscriptions", "/stocks", "/settings", "/reports"]) {
-    await page.goto(route);
+    await navigateLoaded(route);
     await expect
       .poll(() =>
         page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)

@@ -1,3 +1,5 @@
+Subsequent update: [subscription payment recording](subscription-payment-recording.md) reconnects Mark as Paid transactionally; the schedule-only description below is historical for that earlier slice.
+
 # Authenticated feature continuation — 26 November 2026
 
 This work extends the original main app at http://127.0.0.1:13022/, not the separate synthetic demo. `/workspace` is only a redirect to `/debts`. All new commands run through the existing owner-scoped command journal, manual feature gate, transactional receipts and RLS. There are no new schema migrations, providers or automatic record imports. Existing login, databases and financial records are retained.

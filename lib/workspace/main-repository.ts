@@ -1,3 +1,7 @@
+import {
+  executeSubscriptionPaymentCommand,
+  subscriptionPaymentFields,
+} from "./main-subscription-payments";
 import { deleteMainCard } from "./main-card-deletion";
 import { orderingFields, executeOrderingCommand } from "./main-ordering";
 import { goalFields, executeGoalCommand } from "./main-goals";
@@ -150,6 +154,7 @@ export async function executeMainCommand(
       "tx_overrides",
     ],
   };
+  if (input.action === "subscription.pay") allowed.subscription = subscriptionPaymentFields;
   const category = typeof input.action === "string" ? input.action.split(".")[0] : "";
   if (!Object.prototype.hasOwnProperty.call(allowed, category))
     throw new HttpError(400, "Unsupported command");
@@ -192,6 +197,7 @@ export async function executeMainCommand(
     if (input.currency && input.currency !== "GBP")
       throw new HttpError(400, "This workspace uses GBP");
     const extension =
+      (await executeSubscriptionPaymentCommand(c, owner, input)) ??
       (await executeGoalCommand(c, owner, input)) ??
       (await executePreferenceCommand(c, owner, input)) ??
       (await executeInvestmentCommand(c, owner, input)) ??

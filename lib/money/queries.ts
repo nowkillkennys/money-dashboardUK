@@ -1041,6 +1041,25 @@ export async function updateSubscription(
   return data as Subscription;
 }
 
+/** Record an already-made payment against the versions shown to the user. */
+export async function recordSubscriptionPayment(
+  subscription: Pick<Subscription, "id" | "version" | "next_billing">,
+  source: { id: string; version?: number },
+  date: string
+) {
+  if (!Number.isInteger(subscription.version) || !Number.isInteger(source.version)) {
+    throw new Error("This item is out of date. Refresh and review before recording payment.");
+  }
+  return mainCommand("subscription.pay", {
+    id: subscription.id,
+    version: subscription.version,
+    payment_account_id: source.id,
+    payment_account_version: source.version,
+    date,
+    expected_next_billing: subscription.next_billing,
+  });
+}
+
 export async function deleteSubscription(id: string) {
   if (isAuthenticatedMainApp()) {
     return mainCommand("subscription.delete", {
