@@ -1,4 +1,5 @@
 "use client";
+import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { TransactionEditDialog, EditField } from "../components/transaction-edit-dialog";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
@@ -38,30 +39,59 @@ import {
   computeCreditCardBalance,
   reorderAccounts,
 } from "@/lib/money/queries";
-import type { AccountType, Account, CurrencyCode, TransactionWithBalance } from "@/lib/money/database.types";
+import type {
+  AccountType,
+  Account,
+  CurrencyCode,
+  TransactionWithBalance,
+} from "@/lib/money/database.types";
 import { convertCurrency } from "@/lib/money/fx";
 import { format } from "date-fns";
 import { useBalanceVisibility } from "../balance-visibility-provider";
 import {
   DndContext,
   PointerSensor,
+  KeyboardSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import { SortableCard } from "../components/sortable-card";
 import { CARD_COLORS, cardColorClasses } from "../components/card-colors";
 
 export function AccountsContent() {
-  const { accounts, transactions, balances, creditCards, creditCardCharges, creditCardPayments, settings, loading, refresh } = useMoneyData();
+  const {
+    accounts,
+    transactions,
+    balances,
+    creditCards,
+    creditCardCharges,
+    creditCardPayments,
+    settings,
+    loading,
+    refresh,
+  } = useMoneyData();
+  const [orderError, setOrderError] = useState("");
+  const [reordering, setReordering] = useState(false);
   const [orderedAccounts, setOrderedAccounts] = useState<Account[]>([]);
   // Mirror server-provided order locally so drag-end can update optimistically.
-  useEffect(() => { setOrderedAccounts(accounts); }, [accounts]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  useEffect(() => {
+    setOrderedAccounts(accounts);
+  }, [accounts]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (reordering) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIdx = orderedAccounts.findIndex((a) => a.id === active.id);
@@ -71,23 +101,27 @@ export function AccountsContent() {
     if (orderedAccounts[oldIdx].archived !== orderedAccounts[newIdx].archived) return;
     const next = arrayMove(orderedAccounts, oldIdx, newIdx);
     setOrderedAccounts(next);
+    setReordering(true);
+    setOrderError("");
     try {
       // Persist positions for each archive group independently so the seeded
       // positions stay contiguous when items are added/archived later.
       const activeIds = next.filter((a) => !a.archived).map((a) => a.id);
       const archivedIds = next.filter((a) => a.archived).map((a) => a.id);
-      await Promise.all([
-        reorderAccounts(activeIds),
-        reorderAccounts(archivedIds),
-      ]);
-    } catch {
+      if (isAuthenticatedMainApp()) await reorderAccounts([...activeIds, ...archivedIds], next);
+      else await Promise.all([reorderAccounts(activeIds), reorderAccounts(archivedIds)]);
       await refresh();
+    } catch (error) {
+      setOrderedAccounts(accounts);
+      setOrderError(error instanceof Error ? error.message : "Unable to save account order.");
+    } finally {
+      setReordering(false);
     }
   };
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
-  const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
+  const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
@@ -138,49 +172,89 @@ export function AccountsContent() {
   const [ledgerTxs, setLedgerTxs] = useState<TransactionWithBalance[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
 
-  const loadLedger = useCallback(async (accountId: string) => {
-    if (!accountId) return;
-    setLedgerAccountId(accountId);
-    setLedgerLoading(true);
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" ? "/api/workspace/running-balance" : "/api/running-balance"}?account_id=${accountId}`);
-      const data = await res.json();
-      if (res.ok) {
-        setLedgerTxs(data.transactions || []);
+  const loadLedger = useCallback(
+    async (accountId: string) => {
+      if (!accountId) return;
+      setLedgerAccountId(accountId);
+      setLedgerLoading(true);
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" ? "/api/workspace/running-balance" : "/api/running-balance"}?account_id=${accountId}`
+        );
+        const data = await res.json();
+        if (res.ok) {
+          setLedgerTxs(data.transactions || []);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        setLedgerLoading(false);
       }
-    } catch { /* ignore */ }
-    finally { setLedgerLoading(false); }
-  }, [setLedgerAccountId, setLedgerLoading, setLedgerTxs]);
+    },
+    [setLedgerAccountId, setLedgerLoading, setLedgerTxs]
+  );
 
   const [txSortKey, setTxSortKey] = useState<"date" | "from" | "to" | "amount">("date");
   const [txSortDir, setTxSortDir] = useState<"asc" | "desc">("desc");
   const toggleTxSort = (key: typeof txSortKey) => {
-    if (txSortKey === key) setTxSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setTxSortKey(key); setTxSortDir(key === "date" ? "desc" : "asc"); }
+    if (txSortKey === key) setTxSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setTxSortKey(key);
+      setTxSortDir(key === "date" ? "desc" : "asc");
+    }
   };
   const TxSortIcon = ({ col }: { col: typeof txSortKey }) =>
-    txSortKey === col ? (txSortDir === "asc" ? <ArrowUp className="ml-1 inline h-3 w-3" /> : <ArrowDown className="ml-1 inline h-3 w-3" />) : null;
+    txSortKey === col ? (
+      txSortDir === "asc" ? (
+        <ArrowUp className="ml-1 inline h-3 w-3" />
+      ) : (
+        <ArrowDown className="ml-1 inline h-3 w-3" />
+      )
+    ) : null;
 
   // Ledger sorting
-  const [ledgerSortKey, setLedgerSortKey] = useState<"date" | "type" | "description" | "amount" | "balance">("date");
+  const [ledgerSortKey, setLedgerSortKey] = useState<
+    "date" | "type" | "description" | "amount" | "balance"
+  >("date");
   const [ledgerSortDir, setLedgerSortDir] = useState<"asc" | "desc">("desc");
   const toggleLedgerSort = (key: typeof ledgerSortKey) => {
-    if (ledgerSortKey === key) setLedgerSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setLedgerSortKey(key); setLedgerSortDir(key === "date" ? "desc" : "asc"); }
+    if (ledgerSortKey === key) setLedgerSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setLedgerSortKey(key);
+      setLedgerSortDir(key === "date" ? "desc" : "asc");
+    }
   };
   const LedgerSortIcon = ({ col }: { col: typeof ledgerSortKey }) =>
-    ledgerSortKey === col ? (ledgerSortDir === "asc" ? <ArrowUp className="ml-1 inline h-3 w-3" /> : <ArrowDown className="ml-1 inline h-3 w-3" />) : null;
+    ledgerSortKey === col ? (
+      ledgerSortDir === "asc" ? (
+        <ArrowUp className="ml-1 inline h-3 w-3" />
+      ) : (
+        <ArrowDown className="ml-1 inline h-3 w-3" />
+      )
+    ) : null;
 
   const sortedLedgerTxs = useMemo(() => {
     const sorted = [...ledgerTxs];
     sorted.sort((a, b) => {
       let cmp = 0;
       switch (ledgerSortKey) {
-        case "date": cmp = a.date.localeCompare(b.date); break;
-        case "type": cmp = a.type.localeCompare(b.type); break;
-        case "description": cmp = (a.merchant || a.category || a.notes || "").localeCompare(b.merchant || b.category || b.notes || ""); break;
-        case "amount": cmp = a.signed_amount - b.signed_amount; break;
-        case "balance": cmp = a.running_balance - b.running_balance; break;
+        case "date":
+          cmp = a.date.localeCompare(b.date);
+          break;
+        case "type":
+          cmp = a.type.localeCompare(b.type);
+          break;
+        case "description":
+          cmp = (a.merchant || a.category || a.notes || "").localeCompare(
+            b.merchant || b.category || b.notes || ""
+          );
+          break;
+        case "amount":
+          cmp = a.signed_amount - b.signed_amount;
+          break;
+        case "balance":
+          cmp = a.running_balance - b.running_balance;
+          break;
       }
       if (cmp === 0) {
         cmp = a.date.localeCompare(b.date);
@@ -191,7 +265,15 @@ export function AccountsContent() {
     return sorted;
   }, [ledgerTxs, ledgerSortKey, ledgerSortDir]);
 
-  const startEditTransfer = (tx: { id: string; date: string; from_account_id: string | null; to_account_id: string | null; amount: number; received_amount: number | null; notes: string | null }) => {
+  const startEditTransfer = (tx: {
+    id: string;
+    date: string;
+    from_account_id: string | null;
+    to_account_id: string | null;
+    amount: number;
+    received_amount: number | null;
+    notes: string | null;
+  }) => {
     setEditingTransferId(tx.id);
     setEditTxDate(tx.date);
     setEditTxFrom(tx.from_account_id || "");
@@ -204,12 +286,14 @@ export function AccountsContent() {
   const handleSaveTransfer = async (id: string) => {
     const amt = parseFloat(editTxAmount);
     if (isNaN(amt) || amt <= 0) return;
-    if (!editTxFrom || !editTxTo || editTxFrom === editTxTo) throw new Error("Choose two different accounts.");
+    if (!editTxFrom || !editTxTo || editTxFrom === editTxTo)
+      throw new Error("Choose two different accounts.");
     const fromA = accounts.find((a) => a.id === editTxFrom);
     const toA = accounts.find((a) => a.id === editTxTo);
     const isCross = fromA && toA && fromA.currency !== toA.currency;
     const recv = isCross ? parseFloat(editTxReceivedAmount) : null;
-    if (isCross && (!recv || recv <= 0)) throw new Error("Enter the amount received in the destination currency.");
+    if (isCross && (!recv || recv <= 0))
+      throw new Error("Enter the amount received in the destination currency.");
     setSaving(true);
     try {
       await updateTransaction(id, {
@@ -222,7 +306,9 @@ export function AccountsContent() {
       });
       await refresh();
       setEditingTransferId(null);
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const cashTotalBase = accounts
@@ -292,7 +378,7 @@ export function AccountsContent() {
       setTransferRate("");
       setTransferReceivedAmount("");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transferFrom, transferTo, isCrossCurrency, computeDefaultRate]);
 
   const handleFromAmountChange = (val: string) => {
@@ -319,17 +405,35 @@ export function AccountsContent() {
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     setTransferError("");
-    if (!transferFrom) { setTransferError("Select source account"); return; }
-    if (!transferTo) { setTransferError("Select destination account"); return; }
-    if (transferFrom === transferTo) { setTransferError("Pick two different accounts"); return; }
+    if (!transferFrom) {
+      setTransferError("Select source account");
+      return;
+    }
+    if (!transferTo) {
+      setTransferError("Select destination account");
+      return;
+    }
+    if (transferFrom === transferTo) {
+      setTransferError("Pick two different accounts");
+      return;
+    }
     const amt = parseFloat(transferAmount);
-    if (!amt || amt <= 0) { setTransferError("Enter a valid amount"); return; }
-    if (!fromAcct || !toAcct) { setTransferError("Invalid account selection"); return; }
+    if (!amt || amt <= 0) {
+      setTransferError("Enter a valid amount");
+      return;
+    }
+    if (!fromAcct || !toAcct) {
+      setTransferError("Invalid account selection");
+      return;
+    }
 
     let receivedAmount: number | null = null;
     if (isCrossCurrency) {
       receivedAmount = parseFloat(transferReceivedAmount);
-      if (!receivedAmount || receivedAmount <= 0) { setTransferError("Enter the received amount"); return; }
+      if (!receivedAmount || receivedAmount <= 0) {
+        setTransferError("Enter the received amount");
+        return;
+      }
     }
 
     setSaving(true);
@@ -369,12 +473,21 @@ export function AccountsContent() {
     e.preventDefault();
     setCorrectionError("");
     const acct = accounts.find((a) => a.id === correctionAccountId);
-    if (!acct) { setCorrectionError("Invalid account"); return; }
+    if (!acct) {
+      setCorrectionError("Invalid account");
+      return;
+    }
     const target = parseFloat(correctionAmount);
-    if (isNaN(target)) { setCorrectionError("Enter a valid amount"); return; }
+    if (isNaN(target)) {
+      setCorrectionError("Enter a valid amount");
+      return;
+    }
     const current = balances[acct.id] || 0;
     const diff = Math.round((target - current) * 100) / 100;
-    if (diff === 0) { setCorrectionError("Balance already matches"); return; }
+    if (diff === 0) {
+      setCorrectionError("Balance already matches");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -437,10 +550,7 @@ export function AccountsContent() {
 
   const handleDelete = async (id: string, accountName: string) => {
     const linkedTxs = transactions.filter(
-      (t) =>
-        t.account_id === id ||
-        t.from_account_id === id ||
-        t.to_account_id === id
+      (t) => t.account_id === id || t.from_account_id === id || t.to_account_id === id
     );
     if (linkedTxs.length > 0) {
       const ok = confirm(
@@ -464,6 +574,11 @@ export function AccountsContent() {
 
   return (
     <>
+      {orderError && (
+        <div role="alert" className="mb-4 rounded-xl border border-red-400 p-4">
+          {orderError}
+        </div>
+      )}
       <PageHeader
         title="Accounts"
         description="Manage your financial accounts"
@@ -514,133 +629,158 @@ export function AccountsContent() {
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedAccounts.map((a) => a.id)} strategy={rectSortingStrategy}>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {orderedAccounts.map((acct) => {
-            const bal = balances[acct.id] || 0;
-            const txCount = transactions.filter(
-              (t) =>
-                t.account_id === acct.id ||
-                t.from_account_id === acct.id ||
-                t.to_account_id === acct.id
-            ).length;
-            const fallbackClasses = acct.type === "investing"
-              ? { icon: "bg-emerald-500/10 text-emerald-400", bar: "bg-emerald-500" }
-              : { icon: "bg-accent-blue/10 text-accent-blue", bar: "bg-accent-blue" };
-            const colorClasses = cardColorClasses(acct.color, fallbackClasses);
-            return (
-              <SortableCard key={acct.id} id={acct.id}>
-                {({ Handle }) => (
-              <div
-                className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${acct.archived ? "opacity-60" : ""}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClasses.icon}`}>
-                      {acct.type === "investing" ? (
-                        <TrendingUp className="h-5 w-5" />
-                      ) : (
-                        <Wallet className="h-5 w-5" />
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-text-primary">
-                        {acct.name}
-                        {acct.archived && (
-                          <span className="ml-2 rounded bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">Archived</span>
-                        )}
-                      </h3>
-                      <p className="text-xs text-text-secondary capitalize">
-                        {acct.type} • {acct.currency}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Handle />
-                    <button
-                      onClick={() => openEdit(acct)}
-                      className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                     aria-label="Edit" title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(acct.id, acct.name)}
-                      className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                     aria-label="Delete" title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <p className="text-2xl font-bold text-text-primary">
-                    {showBalances ? formatMoney(bal, acct.currency) : HIDDEN_BALANCE}
-                  </p>
-                  {(() => {
-                    // Pending CC payments for this account
-                    const pendingCC = creditCards
-                      .filter((c) => c.linked_account_id === acct.id)
-                      .reduce((sum, c) => {
-                        const ccBal = computeCreditCardBalance(c.id, creditCardCharges, creditCardPayments,c);
-                        return sum + (ccBal > 0 ? ccBal : 0);
-                      }, 0);
-                    const afterCC = bal - pendingCC;
-                    return showBalances && pendingCC > 0 ? (
-                      <div className="mt-1.5 flex items-center justify-between rounded-lg bg-yellow-500/5 px-2 py-1">
-                        <span className="text-[10px] text-text-secondary">After CC payments</span>
-                        <span className="text-xs font-semibold text-yellow-400">
-                          {formatMoney(afterCC, acct.currency)}
-                        </span>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {orderedAccounts.map((acct) => {
+                const bal = balances[acct.id] || 0;
+                const txCount = transactions.filter(
+                  (t) =>
+                    t.account_id === acct.id ||
+                    t.from_account_id === acct.id ||
+                    t.to_account_id === acct.id
+                ).length;
+                const fallbackClasses =
+                  acct.type === "investing"
+                    ? { icon: "bg-emerald-500/10 text-emerald-400", bar: "bg-emerald-500" }
+                    : { icon: "bg-accent-blue/10 text-accent-blue", bar: "bg-accent-blue" };
+                const colorClasses = cardColorClasses(acct.color, fallbackClasses);
+                return (
+                  <SortableCard key={acct.id} id={acct.id}>
+                    {({ renderHandle }) => (
+                      <div
+                        className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${acct.archived ? "opacity-60" : ""}`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClasses.icon}`}
+                            >
+                              {acct.type === "investing" ? (
+                                <TrendingUp className="h-5 w-5" />
+                              ) : (
+                                <Wallet className="h-5 w-5" />
+                              )}
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-semibold text-text-primary">
+                                {acct.name}
+                                {acct.archived && (
+                                  <span className="ml-2 rounded bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
+                                    Archived
+                                  </span>
+                                )}
+                              </h3>
+                              <p className="text-xs text-text-secondary capitalize">
+                                {acct.type} • {acct.currency}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {renderHandle()}
+                            <button
+                              onClick={() => openEdit(acct)}
+                              className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                              aria-label="Edit"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(acct.id, acct.name)}
+                              className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                              aria-label="Delete"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-4">
+                          <p className="text-2xl font-bold text-text-primary">
+                            {showBalances ? formatMoney(bal, acct.currency) : HIDDEN_BALANCE}
+                          </p>
+                          {(() => {
+                            // Pending CC payments for this account
+                            const pendingCC = creditCards
+                              .filter((c) => c.linked_account_id === acct.id)
+                              .reduce((sum, c) => {
+                                const ccBal = computeCreditCardBalance(
+                                  c.id,
+                                  creditCardCharges,
+                                  creditCardPayments,
+                                  c
+                                );
+                                return sum + (ccBal > 0 ? ccBal : 0);
+                              }, 0);
+                            const afterCC = bal - pendingCC;
+                            return showBalances && pendingCC > 0 ? (
+                              <div className="mt-1.5 flex items-center justify-between rounded-lg bg-yellow-500/5 px-2 py-1">
+                                <span className="text-[10px] text-text-secondary">
+                                  After CC payments
+                                </span>
+                                <span className="text-xs font-semibold text-yellow-400">
+                                  {formatMoney(afterCC, acct.currency)}
+                                </span>
+                              </div>
+                            ) : null;
+                          })()}
+                          <div className="mt-1 flex items-center justify-between">
+                            <p className="text-xs text-text-secondary">
+                              {txCount} transaction{txCount !== 1 ? "s" : ""}
+                            </p>
+                            {(acct.starting_balance ?? 0) > 0 && (
+                              <p className="text-xs text-text-secondary">
+                                Starting:{" "}
+                                {showBalances
+                                  ? formatMoney(acct.starting_balance ?? 0, acct.currency)
+                                  : HIDDEN_BALANCE}
+                              </p>
+                            )}
+                          </div>
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              onClick={() => loadLedger(acct.id)}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border-subtle px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent-blue hover:text-accent-blue"
+                            >
+                              <BookOpen className="h-3 w-3" /> Ledger
+                            </button>
+                            <button
+                              onClick={() => openCorrection(acct.id)}
+                              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border-subtle px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent-purple hover:text-accent-purple"
+                            >
+                              <Check className="h-3 w-3" /> Correct
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    ) : null;
-                  })()}
-                  <div className="mt-1 flex items-center justify-between">
-                    <p className="text-xs text-text-secondary">
-                      {txCount} transaction{txCount !== 1 ? "s" : ""}
-                    </p>
-                    {(acct.starting_balance ?? 0) > 0 && (
-                      <p className="text-xs text-text-secondary">
-                        Starting: {showBalances ? formatMoney(acct.starting_balance ?? 0, acct.currency) : HIDDEN_BALANCE}
-                      </p>
                     )}
-                  </div>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={() => loadLedger(acct.id)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border-subtle px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent-blue hover:text-accent-blue"
-                    >
-                      <BookOpen className="h-3 w-3" /> Ledger
-                    </button>
-                    <button
-                      onClick={() => openCorrection(acct.id)}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border-subtle px-3 py-1.5 text-xs text-text-secondary transition hover:border-accent-purple hover:text-accent-purple"
-                    >
-                      <Check className="h-3 w-3" /> Correct
-                    </button>
-                  </div>
-                </div>
-              </div>
-                )}
-              </SortableCard>
-            );
-          })}
-        </div>
+                  </SortableCard>
+                );
+              })}
+            </div>
           </SortableContext>
         </DndContext>
       )}
 
       {/* Transfer History */}
       {(() => {
-        const transfers = transactions
-          .filter((t) => t.type === "transfer");
+        const transfers = transactions.filter((t) => t.type === "transfer");
         if (transfers.length === 0) return null;
-        const accountName = (id: string | null) =>
-          accounts.find((a) => a.id === id)?.name ?? "—";
+        const accountName = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? "—";
         const sortedTransfers = [...transfers].sort((a, b) => {
           let cmp = 0;
           switch (txSortKey) {
-            case "date": cmp = a.date.localeCompare(b.date); break;
-            case "amount": cmp = a.amount - b.amount; break;
-            case "from": cmp = (accountName(a.from_account_id)).localeCompare(accountName(b.from_account_id)); break;
-            case "to": cmp = (accountName(a.to_account_id)).localeCompare(accountName(b.to_account_id)); break;
+            case "date":
+              cmp = a.date.localeCompare(b.date);
+              break;
+            case "amount":
+              cmp = a.amount - b.amount;
+              break;
+            case "from":
+              cmp = accountName(a.from_account_id).localeCompare(accountName(b.from_account_id));
+              break;
+            case "to":
+              cmp = accountName(a.to_account_id).localeCompare(accountName(b.to_account_id));
+              break;
           }
           return txSortDir === "asc" ? cmp : -cmp;
         });
@@ -654,71 +794,131 @@ export function AccountsContent() {
               <table className="w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
                 <thead>
                   <tr className="border-b border-border-subtle bg-bg-secondary">
-                    <th className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleTxSort("date")}>Date<TxSortIcon col="date" /></th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleTxSort("from")}>From<TxSortIcon col="from" /></th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleTxSort("to")}>To<TxSortIcon col="to" /></th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleTxSort("amount")}>Amount<TxSortIcon col="amount" /></th>
-                    <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-text-secondary">Note</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4">Actions</th>
+                    <th
+                      className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                      onClick={() => toggleTxSort("date")}
+                    >
+                      Date
+                      <TxSortIcon col="date" />
+                    </th>
+                    <th
+                      className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                      onClick={() => toggleTxSort("from")}
+                    >
+                      From
+                      <TxSortIcon col="from" />
+                    </th>
+                    <th
+                      className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                      onClick={() => toggleTxSort("to")}
+                    >
+                      To
+                      <TxSortIcon col="to" />
+                    </th>
+                    <th
+                      className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                      onClick={() => toggleTxSort("amount")}
+                    >
+                      Amount
+                      <TxSortIcon col="amount" />
+                    </th>
+                    <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      Note
+                    </th>
+                    <th className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortedTransfers.map((tx) => {
-
                     return (
-                    <tr
-                      key={tx.id}
-                      className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
-                    >
-                      <td className="whitespace-nowrap px-3 py-3 text-text-primary sm:px-4">
-                        {(
-                          format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-text-primary sm:px-4">
-                        {(
-                          <span className="block max-w-[130px] truncate" title={accountName(tx.from_account_id)}>{accountName(tx.from_account_id)}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-text-primary sm:px-4">
-                        {(
-                          <span className="block max-w-[130px] truncate" title={accountName(tx.to_account_id)}>{accountName(tx.to_account_id)}</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-accent-blue sm:px-4">
-                        {showBalances ? (
-                          <span>
-                            {formatMoney(tx.amount, tx.currency)}
-                            {tx.received_amount != null && tx.received_amount !== tx.amount && (() => {
-                              const destAcct = accounts.find((a) => a.id === tx.to_account_id);
-                              return <span className="block text-[10px] font-normal text-text-secondary">{"→"} {formatMoney(tx.received_amount, destAcct?.currency ?? tx.currency)}</span>;
-                            })()}
-                          </span>
-                        ) : HIDDEN_BALANCE}
-                      </td>
-                      <td className="hidden sm:table-cell px-4 py-3 text-text-secondary">
-                        {(
-                          <span className="block max-w-[160px] truncate" title={tx.notes || undefined}>{tx.notes || "—"}</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 text-right sm:px-4">
-                        {(
-                          <span className="inline-flex gap-1">
-                            <button aria-label="Edit transfer" onClick={() => startEditTransfer(tx)} className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"><Pencil className="h-3.5 w-3.5" /></button>
-                            <button
-                              onClick={async () => {
-                                if (!confirm("Delete this transfer?")) return;
-                                await deleteTransaction(tx.id);
-                                await refresh();
-                              }}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                             aria-label="Delete" title="Delete">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+                      <tr
+                        key={tx.id}
+                        className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+                      >
+                        <td className="whitespace-nowrap px-3 py-3 text-text-primary sm:px-4">
+                          {format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")}
+                        </td>
+                        <td className="px-3 py-3 text-text-primary sm:px-4">
+                          {
+                            <span
+                              className="block max-w-[130px] truncate"
+                              title={accountName(tx.from_account_id)}
+                            >
+                              {accountName(tx.from_account_id)}
+                            </span>
+                          }
+                        </td>
+                        <td className="px-3 py-3 text-text-primary sm:px-4">
+                          {
+                            <span
+                              className="block max-w-[130px] truncate"
+                              title={accountName(tx.to_account_id)}
+                            >
+                              {accountName(tx.to_account_id)}
+                            </span>
+                          }
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-right font-semibold text-accent-blue sm:px-4">
+                          {showBalances ? (
+                            <span>
+                              {formatMoney(tx.amount, tx.currency)}
+                              {tx.received_amount != null &&
+                                tx.received_amount !== tx.amount &&
+                                (() => {
+                                  const destAcct = accounts.find((a) => a.id === tx.to_account_id);
+                                  return (
+                                    <span className="block text-[10px] font-normal text-text-secondary">
+                                      {"→"}{" "}
+                                      {formatMoney(
+                                        tx.received_amount,
+                                        destAcct?.currency ?? tx.currency
+                                      )}
+                                    </span>
+                                  );
+                                })()}
+                            </span>
+                          ) : (
+                            HIDDEN_BALANCE
+                          )}
+                        </td>
+                        <td className="hidden sm:table-cell px-4 py-3 text-text-secondary">
+                          {
+                            <span
+                              className="block max-w-[160px] truncate"
+                              title={tx.notes || undefined}
+                            >
+                              {tx.notes || "—"}
+                            </span>
+                          }
+                        </td>
+                        <td className="px-3 py-3 text-right sm:px-4">
+                          {
+                            <span className="inline-flex gap-1">
+                              <button
+                                aria-label="Edit transfer"
+                                onClick={() => startEditTransfer(tx)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm("Delete this transfer?")) return;
+                                  await deleteTransaction(tx.id);
+                                  await refresh();
+                                }}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                                aria-label="Delete"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          }
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -729,116 +929,240 @@ export function AccountsContent() {
       })()}
 
       {/* Running Balance Ledger */}
-      {ledgerAccountId && (() => {
-        const acct = accounts.find((a) => a.id === ledgerAccountId);
-        if (!acct) return null;
-        return (
-          <section className="mt-8">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-accent-purple" />
-                Ledger — {acct.name}
-              </h2>
-              <button
-                onClick={() => { setLedgerAccountId(""); setLedgerTxs([]); }}
-                className="rounded-lg p-1 text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-               aria-label="Close" title="Close">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            {ledgerLoading ? (
-              <div className="flex justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-accent-purple" />
+      {ledgerAccountId &&
+        (() => {
+          const acct = accounts.find((a) => a.id === ledgerAccountId);
+          if (!acct) return null;
+          return (
+            <section className="mt-8">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-accent-purple" />
+                  Ledger — {acct.name}
+                </h2>
+                <button
+                  onClick={() => {
+                    setLedgerAccountId("");
+                    setLedgerTxs([]);
+                  }}
+                  className="rounded-lg p-1 text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
+                  aria-label="Close"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            ) : ledgerTxs.length === 0 ? (
-              <p className="rounded-2xl border border-border-subtle bg-bg-secondary p-6 text-center text-sm text-text-secondary">
-                No transactions for this account.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-2xl border border-border-subtle">
-                <table className="w-full min-w-[600px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
-                  <thead>
-                    <tr className="border-b border-border-subtle bg-bg-secondary">
-                      <th className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleLedgerSort("date")}>Date<LedgerSortIcon col="date" /></th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleLedgerSort("type")}>Type<LedgerSortIcon col="type" /></th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleLedgerSort("description")}>Description<LedgerSortIcon col="description" /></th>
-                      <th className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleLedgerSort("amount")}>Amount<LedgerSortIcon col="amount" /></th>
-                      <th className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary" onClick={() => toggleLedgerSort("balance")}>Balance<LedgerSortIcon col="balance" /></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedLedgerTxs.map((tx) => {
-                      const isPositive = tx.signed_amount >= 0;
-                      return (
-                        <tr
-                          key={tx.id}
-                          className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+              {ledgerLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-accent-purple" />
+                </div>
+              ) : ledgerTxs.length === 0 ? (
+                <p className="rounded-2xl border border-border-subtle bg-bg-secondary p-6 text-center text-sm text-text-secondary">
+                  No transactions for this account.
+                </p>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-border-subtle">
+                  <table className="w-full min-w-[600px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+                    <thead>
+                      <tr className="border-b border-border-subtle bg-bg-secondary">
+                        <th
+                          className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleLedgerSort("date")}
                         >
-                          <td className="px-3 py-2.5 text-text-secondary sm:px-4">
-                            {format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")}
-                          </td>
-                          <td className="px-3 py-2.5 sm:px-4">
-                            <span className={`inline-flex rounded-lg px-2 py-0.5 text-[11px] font-medium ${
-                              tx.category === "CC Payment"
-                                ? "bg-accent-purple/10 text-accent-purple"
-                                : tx.type === "income"
-                                  ? "bg-emerald-500/10 text-emerald-400"
-                                  : tx.type === "correction"
-                                    ? "bg-yellow-500/10 text-yellow-400"
-                                    : tx.type === "expense"
-                                      ? "bg-red-500/10 text-red-400"
-                                      : "bg-accent-blue/10 text-accent-blue"
-                            }`}>
-                              {tx.category === "CC Payment" ? "cc payment" : tx.type}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-text-primary sm:px-4">
-                            <span className="block max-w-[200px] truncate" title={tx.merchant || tx.category || tx.notes || undefined}>{tx.merchant || tx.category || tx.notes || "—"}</span>
-                          </td>
-                          <td className={`px-3 py-2.5 text-right font-medium sm:px-4 ${
-                            isPositive ? "text-emerald-400" : "text-red-400"
-                          }`}>
-                            {showBalances ? (
-                              <span>
-                                {isPositive ? "+" : ""}{formatMoney(tx.signed_amount, acct.currency)}
-                                {tx.currency !== acct.currency && (
-                                  <span className="block text-[10px] font-normal text-text-secondary">{formatMoney(tx.amount, tx.currency)}</span>
-                                )}
+                          Date
+                          <LedgerSortIcon col="date" />
+                        </th>
+                        <th
+                          className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleLedgerSort("type")}
+                        >
+                          Type
+                          <LedgerSortIcon col="type" />
+                        </th>
+                        <th
+                          className="px-3 py-3 text-left text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleLedgerSort("description")}
+                        >
+                          Description
+                          <LedgerSortIcon col="description" />
+                        </th>
+                        <th
+                          className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleLedgerSort("amount")}
+                        >
+                          Amount
+                          <LedgerSortIcon col="amount" />
+                        </th>
+                        <th
+                          className="px-3 py-3 text-right text-xs font-medium text-text-secondary sm:px-4 cursor-pointer select-none hover:text-text-primary"
+                          onClick={() => toggleLedgerSort("balance")}
+                        >
+                          Balance
+                          <LedgerSortIcon col="balance" />
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedLedgerTxs.map((tx) => {
+                        const isPositive = tx.signed_amount >= 0;
+                        return (
+                          <tr
+                            key={tx.id}
+                            className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+                          >
+                            <td className="px-3 py-2.5 text-text-secondary sm:px-4">
+                              {format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")}
+                            </td>
+                            <td className="px-3 py-2.5 sm:px-4">
+                              <span
+                                className={`inline-flex rounded-lg px-2 py-0.5 text-[11px] font-medium ${
+                                  tx.category === "CC Payment"
+                                    ? "bg-accent-purple/10 text-accent-purple"
+                                    : tx.type === "income"
+                                      ? "bg-emerald-500/10 text-emerald-400"
+                                      : tx.type === "correction"
+                                        ? "bg-yellow-500/10 text-yellow-400"
+                                        : tx.type === "expense"
+                                          ? "bg-red-500/10 text-red-400"
+                                          : "bg-accent-blue/10 text-accent-blue"
+                                }`}
+                              >
+                                {tx.category === "CC Payment" ? "cc payment" : tx.type}
                               </span>
-                            ) : HIDDEN_BALANCE}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-text-primary sm:px-4">
-                            {showBalances
-                              ? formatMoney(tx.running_balance, acct.currency)
-                              : HIDDEN_BALANCE
-                            }
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        );
-      })()}
+                            </td>
+                            <td className="px-3 py-2.5 text-text-primary sm:px-4">
+                              <span
+                                className="block max-w-[200px] truncate"
+                                title={tx.merchant || tx.category || tx.notes || undefined}
+                              >
+                                {tx.merchant || tx.category || tx.notes || "—"}
+                              </span>
+                            </td>
+                            <td
+                              className={`px-3 py-2.5 text-right font-medium sm:px-4 ${
+                                isPositive ? "text-emerald-400" : "text-red-400"
+                              }`}
+                            >
+                              {showBalances ? (
+                                <span>
+                                  {isPositive ? "+" : ""}
+                                  {formatMoney(tx.signed_amount, acct.currency)}
+                                  {tx.currency !== acct.currency && (
+                                    <span className="block text-[10px] font-normal text-text-secondary">
+                                      {formatMoney(tx.amount, tx.currency)}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                HIDDEN_BALANCE
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-text-primary sm:px-4">
+                              {showBalances
+                                ? formatMoney(tx.running_balance, acct.currency)
+                                : HIDDEN_BALANCE}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          );
+        })()}
 
       {/* Add Account Modal */}
-<TransactionEditDialog open={!!editingTransferId} title="Edit Transfer" saving={saving} onClose={() => setEditingTransferId(null)} onSave={async () => {if(editingTransferId) await handleSaveTransfer(editingTransferId);}}>
-<div className="grid gap-5 sm:grid-cols-2">
-<EditField label="Date"><input aria-label="Date" type="date" required value={editTxDate} onChange={event=>setEditTxDate(event.target.value)} /></EditField>
-<EditField label="Amount sent"><input aria-label="Amount sent" type="number" required min="0.01" step="0.01" value={editTxAmount} onChange={event=>setEditTxAmount(event.target.value)} /></EditField>
-<EditField label="From"><select aria-label="From" required value={editTxFrom} onChange={event=>setEditTxFrom(event.target.value)}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></EditField>
-<EditField label="To"><select aria-label="To" required value={editTxTo} onChange={event=>setEditTxTo(event.target.value)}>{accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></EditField>
-</div>
-{accounts.find(a=>a.id===editTxFrom)?.currency !== accounts.find(a=>a.id===editTxTo)?.currency && <EditField label="Amount received"><input aria-label="Amount received" type="number" required min="0.01" step="0.01" value={editTxReceivedAmount} onChange={event=>setEditTxReceivedAmount(event.target.value)} /></EditField>}
-<EditField label="Notes"><textarea aria-label="Notes" rows={2} value={editTxNote} onChange={event=>setEditTxNote(event.target.value)} /></EditField>
-</TransactionEditDialog>
+      <TransactionEditDialog
+        open={!!editingTransferId}
+        title="Edit Transfer"
+        saving={saving}
+        onClose={() => setEditingTransferId(null)}
+        onSave={async () => {
+          if (editingTransferId) await handleSaveTransfer(editingTransferId);
+        }}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <EditField label="Date">
+            <input
+              aria-label="Date"
+              type="date"
+              required
+              value={editTxDate}
+              onChange={(event) => setEditTxDate(event.target.value)}
+            />
+          </EditField>
+          <EditField label="Amount sent">
+            <input
+              aria-label="Amount sent"
+              type="number"
+              required
+              min="0.01"
+              step="0.01"
+              value={editTxAmount}
+              onChange={(event) => setEditTxAmount(event.target.value)}
+            />
+          </EditField>
+          <EditField label="From">
+            <select
+              aria-label="From"
+              required
+              value={editTxFrom}
+              onChange={(event) => setEditTxFrom(event.target.value)}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.currency})
+                </option>
+              ))}
+            </select>
+          </EditField>
+          <EditField label="To">
+            <select
+              aria-label="To"
+              required
+              value={editTxTo}
+              onChange={(event) => setEditTxTo(event.target.value)}
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.currency})
+                </option>
+              ))}
+            </select>
+          </EditField>
+        </div>
+        {accounts.find((a) => a.id === editTxFrom)?.currency !==
+          accounts.find((a) => a.id === editTxTo)?.currency && (
+          <EditField label="Amount received">
+            <input
+              aria-label="Amount received"
+              type="number"
+              required
+              min="0.01"
+              step="0.01"
+              value={editTxReceivedAmount}
+              onChange={(event) => setEditTxReceivedAmount(event.target.value)}
+            />
+          </EditField>
+        )}
+        <EditField label="Notes">
+          <textarea
+            aria-label="Notes"
+            rows={2}
+            value={editTxNote}
+            onChange={(event) => setEditTxNote(event.target.value)}
+          />
+        </EditField>
+      </TransactionEditDialog>
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Account">
         <form onSubmit={handleAdd} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-1">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="accounts-field-1"
+            >
               Name
             </label>
             <input
@@ -846,31 +1170,40 @@ export function AccountsContent() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Savings"
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-1"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="accounts-field-1"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-2">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-2"
+              >
                 Type
               </label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as AccountType)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-2"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-2"
               >
                 <option value="checking">Current account</option>
                 <option value="investing">Investing</option>
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-3">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-3"
+              >
                 Currency
               </label>
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-3"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-3"
               >
                 <option value="GBP">GBP</option>
                 <option value="EUR">EUR</option>
@@ -880,7 +1213,10 @@ export function AccountsContent() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-4">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-4"
+              >
                 Starting Balance
               </label>
               <input
@@ -889,14 +1225,13 @@ export function AccountsContent() {
                 value={startingBalance}
                 onChange={(e) => setStartingBalance(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-4"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-4"
               />
             </div>
           </div>
           {formError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {formError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{formError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -922,38 +1257,50 @@ export function AccountsContent() {
       <Modal open={editing !== null} onClose={() => setEditing(null)} title="Edit Account">
         <form onSubmit={handleEdit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-5">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="accounts-field-5"
+            >
               Name
             </label>
             <input
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-5"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="accounts-field-5"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-6">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-6"
+              >
                 Type
               </label>
               <select
                 value={editType}
                 onChange={(e) => setEditType(e.target.value as AccountType)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-6"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-6"
               >
                 <option value="checking">Current account</option>
                 <option value="investing">Investing</option>
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-7">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-7"
+              >
                 Currency
               </label>
               <select
                 value={editCurrency}
                 onChange={(e) => setEditCurrency(e.target.value as CurrencyCode)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-7"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-7"
               >
                 <option value="GBP">GBP</option>
                 <option value="EUR">EUR</option>
@@ -963,7 +1310,10 @@ export function AccountsContent() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-8">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-8"
+              >
                 Starting Balance
               </label>
               <input
@@ -971,14 +1321,13 @@ export function AccountsContent() {
                 step="0.01"
                 value={editStarting}
                 onChange={(e) => setEditStarting(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-8"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-8"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Color
-            </label>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Color</label>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1000,13 +1349,19 @@ export function AccountsContent() {
             </div>
           </div>
           <label className="flex items-center gap-3 cursor-pointer">
-            <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center"><input type="checkbox" aria-label="Archived" checked={editArchived} onChange={event => setEditArchived(event.target.checked)} className="h-4 w-4 accent-[var(--accent-blue)]" /></label>
+            <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+              <input
+                type="checkbox"
+                aria-label="Archived"
+                checked={editArchived}
+                onChange={(event) => setEditArchived(event.target.checked)}
+                className="h-4 w-4 accent-[var(--accent-blue)]"
+              />
+            </label>
             <span className="text-sm text-text-primary">Archive (sort to bottom)</span>
           </label>
           {editError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {editError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{editError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -1029,76 +1384,184 @@ export function AccountsContent() {
       </Modal>
 
       {/* Transfer Modal */}
-      <Modal open={showTransfer} onClose={() => setShowTransfer(false)} title="Transfer Between Accounts">
+      <Modal
+        open={showTransfer}
+        onClose={() => setShowTransfer(false)}
+        title="Transfer Between Accounts"
+      >
         <form onSubmit={handleTransfer} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-9">From</label>
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-9"
+              >
+                From
+              </label>
               <select
                 value={transferFrom}
-                onChange={(e) => { setTransferFrom(e.target.value); }}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-9"
+                onChange={(e) => {
+                  setTransferFrom(e.target.value);
+                }}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-9"
               >
                 <option value="">Select account…</option>
                 {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name} ({a.currency}) — {showBalances ? formatMoney(balances[a.id] || 0, a.currency) : HIDDEN_BALANCE}</option>
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.currency}) —{" "}
+                    {showBalances ? formatMoney(balances[a.id] || 0, a.currency) : HIDDEN_BALANCE}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-10">To</label>
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="accounts-field-10"
+              >
+                To
+              </label>
               <select
                 value={transferTo}
-                onChange={(e) => { setTransferTo(e.target.value); }}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-10"
+                onChange={(e) => {
+                  setTransferTo(e.target.value);
+                }}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="accounts-field-10"
               >
                 <option value="">Select account…</option>
-                {accounts.filter((a) => a.id !== transferFrom).map((a) => (
-                  <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
-                ))}
+                {accounts
+                  .filter((a) => a.id !== transferFrom)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.currency})
+                    </option>
+                  ))}
               </select>
             </div>
           </div>
 
           <div className="min-w-0">
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-11">Date</label>
-            <input type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} className="w-full max-w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple [&::-webkit-datetime-edit]:min-w-0" id="accounts-field-11" />
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="accounts-field-11"
+            >
+              Date
+            </label>
+            <input
+              type="date"
+              value={transferDate}
+              onChange={(e) => setTransferDate(e.target.value)}
+              className="w-full max-w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple [&::-webkit-datetime-edit]:min-w-0"
+              id="accounts-field-11"
+            />
           </div>
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-12">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="accounts-field-12"
+            >
               Amount {fromAcct ? `(${fromAcct.currency})` : ""}
             </label>
-            <input type="number" min="0.01" step="0.01" value={transferAmount} onChange={(e) => handleFromAmountChange(e.target.value)} placeholder="0.00" className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-12" />
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={transferAmount}
+              onChange={(e) => handleFromAmountChange(e.target.value)}
+              placeholder="0.00"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="accounts-field-12"
+            />
           </div>
 
           {isCrossCurrency && (
             <>
               <div className="flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-elevated px-3 py-2">
-                <span className="whitespace-nowrap text-xs text-text-secondary">1 {fromAcct?.currency} =</span>
-                <input type="number" step="0.0001" value={transferRate} onChange={(e) => handleRateChange(e.target.value)} className="w-24 rounded-lg border border-border-subtle bg-bg-elevated px-2 py-1 text-center text-sm text-text-primary outline-none focus:border-accent-purple" />
-                <span className="whitespace-nowrap text-xs text-text-secondary">{toAcct?.currency}</span>
-                <button type="button" onClick={() => { const r = computeDefaultRate(); setTransferRate(r); const a = parseFloat(transferAmount); if (a > 0 && parseFloat(r) > 0) setTransferReceivedAmount((a * parseFloat(r)).toFixed(2)); }} className="ml-auto whitespace-nowrap rounded-lg px-2 py-1 text-[10px] font-medium text-accent-blue hover:bg-accent-blue/10">Use live rate</button>
+                <span className="whitespace-nowrap text-xs text-text-secondary">
+                  1 {fromAcct?.currency} =
+                </span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={transferRate}
+                  onChange={(e) => handleRateChange(e.target.value)}
+                  className="w-24 rounded-lg border border-border-subtle bg-bg-elevated px-2 py-1 text-center text-sm text-text-primary outline-none focus:border-accent-purple"
+                />
+                <span className="whitespace-nowrap text-xs text-text-secondary">
+                  {toAcct?.currency}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const r = computeDefaultRate();
+                    setTransferRate(r);
+                    const a = parseFloat(transferAmount);
+                    if (a > 0 && parseFloat(r) > 0)
+                      setTransferReceivedAmount((a * parseFloat(r)).toFixed(2));
+                  }}
+                  className="ml-auto whitespace-nowrap rounded-lg px-2 py-1 text-[10px] font-medium text-accent-blue hover:bg-accent-blue/10"
+                >
+                  Use live rate
+                </button>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-13">
+                <label
+                  className="mb-1 block text-xs font-medium text-text-secondary"
+                  htmlFor="accounts-field-13"
+                >
                   Received ({toAcct?.currency})
                 </label>
-                <input type="number" min="0.01" step="0.01" value={transferReceivedAmount} onChange={(e) => handleReceivedAmountChange(e.target.value)} placeholder="0.00" className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-13" />
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={transferReceivedAmount}
+                  onChange={(e) => handleReceivedAmountChange(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                  id="accounts-field-13"
+                />
               </div>
             </>
           )}
 
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-14">Note (optional)</label>
-            <input type="text" value={transferNote} onChange={(e) => setTransferNote(e.target.value)} placeholder="e.g., Moving to savings" className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-14" />
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="accounts-field-14"
+            >
+              Note (optional)
+            </label>
+            <input
+              type="text"
+              value={transferNote}
+              onChange={(e) => setTransferNote(e.target.value)}
+              placeholder="e.g., Moving to savings"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="accounts-field-14"
+            />
           </div>
           {transferError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{transferError}</p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              {transferError}
+            </p>
           )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowTransfer(false)} className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated">Cancel</button>
-            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60">
+            <button
+              type="button"
+              onClick={() => setShowTransfer(false)}
+              className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
+            >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Transfer
             </button>
@@ -1118,28 +1581,63 @@ export function AccountsContent() {
                 <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-text-secondary">{acct.name}</span>
-                    <span className="text-lg font-bold text-text-primary">{showBalances ? formatMoney(current, acct.currency) : HIDDEN_BALANCE}</span>
+                    <span className="text-lg font-bold text-text-primary">
+                      {showBalances ? formatMoney(current, acct.currency) : HIDDEN_BALANCE}
+                    </span>
                   </div>
                   <p className="mt-1 text-xs text-text-secondary">Current computed balance</p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="accounts-field-15">Correct Balance ({acct.currency})</label>
-                  <input type="number" step="0.01" value={correctionAmount} onChange={(e) => setCorrectionAmount(e.target.value)} placeholder={current.toFixed(2)} className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-15" />
+                  <label
+                    className="mb-1 block text-xs font-medium text-text-secondary"
+                    htmlFor="accounts-field-15"
+                  >
+                    Correct Balance ({acct.currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={correctionAmount}
+                    onChange={(e) => setCorrectionAmount(e.target.value)}
+                    placeholder={current.toFixed(2)}
+                    className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                    id="accounts-field-15"
+                  />
                 </div>
-                {correctionAmount && !isNaN(parseFloat(correctionAmount)) && parseFloat(correctionAmount) !== current && (
-                  <div className={`rounded-xl border px-3 py-2 text-xs ${parseFloat(correctionAmount) > current ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400" : "border-red-500/30 bg-red-500/5 text-red-400"}`}>
-                    Adjustment: {parseFloat(correctionAmount) > current ? "+" : ""}{formatMoney(Math.round((parseFloat(correctionAmount) - current) * 100) / 100, acct.currency)}
-                  </div>
-                )}
+                {correctionAmount &&
+                  !isNaN(parseFloat(correctionAmount)) &&
+                  parseFloat(correctionAmount) !== current && (
+                    <div
+                      className={`rounded-xl border px-3 py-2 text-xs ${parseFloat(correctionAmount) > current ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-400" : "border-red-500/30 bg-red-500/5 text-red-400"}`}
+                    >
+                      Adjustment: {parseFloat(correctionAmount) > current ? "+" : ""}
+                      {formatMoney(
+                        Math.round((parseFloat(correctionAmount) - current) * 100) / 100,
+                        acct.currency
+                      )}
+                    </div>
+                  )}
               </>
             );
           })()}
           {correctionError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{correctionError}</p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              {correctionError}
+            </p>
           )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowCorrection(false)} className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated">Cancel</button>
-            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60">
+            <button
+              type="button"
+              onClick={() => setShowCorrection(false)}
+              className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
+            >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Apply Correction
             </button>

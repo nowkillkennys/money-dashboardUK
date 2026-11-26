@@ -1,3 +1,5 @@
+import { deleteMainCard } from "./main-card-deletion";
+import { orderingFields, executeOrderingCommand } from "./main-ordering";
 import { goalFields, executeGoalCommand } from "./main-goals";
 import { preferenceFields, executePreferenceCommand } from "./main-preferences";
 import { investmentFields, executeInvestmentCommand } from "./main-investments";
@@ -101,6 +103,7 @@ export async function executeMainCommand(
 ): Promise<{ id: string; version: number; row: any }> {
   const common = ["action", "id", "version", "currency"];
   const allowed: Record<string, string[]> = {
+    ...orderingFields,
     ...goalFields,
     ...preferenceFields,
     ...investmentFields,
@@ -183,7 +186,8 @@ export async function executeMainCommand(
     const extension =
       (await executeGoalCommand(c, owner, input)) ??
       (await executePreferenceCommand(c, owner, input)) ??
-      (await executeInvestmentCommand(c, owner, input));
+      (await executeInvestmentCommand(c, owner, input)) ??
+      (await executeOrderingCommand(c, owner, input));
     if (extension) {
       const result = {
         id: extension.id,
@@ -495,11 +499,15 @@ export async function executeMainCommand(
       await c.query("UPDATE money_credit_cards SET version=version+1 WHERE id=$1", [resourceId]);
       // The same workspace identity is an explicit statement anchor; canonical charge/payment rows are the live ledger.
       row.version = Number(input.version) + 1;
+    } else if (action === "delete" && entity === "card") {
+      if (Object.keys(input).some((k) => !["action", "id", "version"].includes(k)))
+        throw new HttpError(400, "Delete accepts only the card identifier and version");
+      row = await deleteMainCard(c, owner, row);
     } else if (action === "delete" && entity !== "card") {
       if (entity === "bank") {
         const references = (
           await c.query(
-            `SELECT EXISTS(SELECT 1 FROM money_transactions WHERE account_id=$1 OR from_account_id=$1 OR to_account_id=$1 UNION ALL SELECT 1 FROM money_credit_card_payments WHERE account_id=$1 UNION ALL SELECT 1 FROM money_credit_cards WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goals WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goal_accounts WHERE account_id=$1 UNION ALL SELECT 1 FROM money_holdings WHERE account_id=$1 UNION ALL SELECT 1 FROM money_subscriptions WHERE payment_account_id=$1::text UNION ALL SELECT 1 FROM money_reconciliation_sessions WHERE account_id=$1) AS present`,
+            `SELECT EXISTS(SELECT 1 FROM money_transactions WHERE account_id=$1 OR from_account_id=$1 OR to_account_id=$1 UNION ALL SELECT 1 FROM money_credit_card_payments WHERE account_id=$1 UNION ALL SELECT 1 FROM money_credit_cards WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goals WHERE linked_account_id=$1 UNION ALL SELECT 1 FROM money_goal_accounts WHERE account_id=$1 UNION ALL SELECT 1 FROM money_holdings WHERE account_id=$1 UNION ALL SELECT 1 FROM money_subscriptions WHERE lower(payment_account_id)=$1::text UNION ALL SELECT 1 FROM money_reconciliation_sessions WHERE account_id=$1) AS present`,
             [resourceId]
           )
         ).rows[0];

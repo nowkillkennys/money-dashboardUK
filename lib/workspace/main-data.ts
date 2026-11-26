@@ -53,9 +53,11 @@ export function mainData(owner: string, username: string) {
     async (c) => {
       const data: Record<string, any> = {};
       for (const [key, table] of Object.entries(mapping)) {
-        data[key] = (await c.query(`SELECT * FROM ${table} ORDER BY created_at,id`)).rows.map(
-          adapt
-        );
+        data[key] = (
+          await c.query(
+            `SELECT * FROM ${table} ORDER BY ${key === "accounts" || key === "creditCards" ? "archived,position NULLS LAST," : ""}created_at,id`
+          )
+        ).rows.map(adapt);
       }
       const setting = (await c.query("SELECT * FROM money_settings")).rows[0];
       data.settings = setting
@@ -99,7 +101,8 @@ export function mainData(owner: string, username: string) {
         let pence = Math.round(bank.starting_balance * 100);
         for (const tx of data.transactions) {
           const value = Math.round(tx.amount * 100);
-          if ((tx.type === "income" || tx.type === "correction") && tx.account_id === bank.id) pence += value;
+          if ((tx.type === "income" || tx.type === "correction") && tx.account_id === bank.id)
+            pence += value;
           if (tx.type === "expense" && tx.account_id === bank.id) pence -= value;
           if (tx.type === "transfer") {
             if (tx.from_account_id === bank.id) pence -= value;

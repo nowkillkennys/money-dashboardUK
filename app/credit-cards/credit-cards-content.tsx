@@ -1,4 +1,5 @@
 "use client";
+import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { TransactionEditDialog, EditField } from "../components/transaction-edit-dialog";
 import { validateRefund } from "@/lib/money/refunds";
 import { RefundExpensePicker } from "../components/refund-expense-picker";
@@ -57,12 +58,18 @@ import { useBalanceVisibility } from "../balance-visibility-provider";
 import {
   DndContext,
   PointerSensor,
+  KeyboardSensor,
   closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 import { SortableCard } from "../components/sortable-card";
 import { CARD_COLORS, cardColorClasses } from "../components/card-colors";
 import { getCreditCardPaymentSource } from "@/lib/money/credit-card-payment-source";
@@ -148,12 +155,21 @@ export function CreditCardsContent() {
   const [editCardColor, setEditCardColor] = useState<string | null>(null);
   const [editCardArchived, setEditCardArchived] = useState(false);
   const [editCardError, setEditCardError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [restrictedCard, setRestrictedCard] = useState<CreditCard | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [reordering, setReordering] = useState(false);
   const [orderedCards, setOrderedCards] = useState<CreditCard[]>([]);
   useEffect(() => {
     setOrderedCards(creditCards);
   }, [creditCards]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (reordering || deletingCardId) return;
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIdx = orderedCards.findIndex((c) => c.id === active.id);
@@ -162,12 +178,19 @@ export function CreditCardsContent() {
     if (orderedCards[oldIdx].archived !== orderedCards[newIdx].archived) return;
     const next = arrayMove(orderedCards, oldIdx, newIdx);
     setOrderedCards(next);
+    setReordering(true);
+    setActionError("");
     try {
       const activeIds = next.filter((c) => !c.archived).map((c) => c.id);
       const archivedIds = next.filter((c) => c.archived).map((c) => c.id);
-      await Promise.all([reorderCreditCards(activeIds), reorderCreditCards(archivedIds)]);
-    } catch {
+      if (isAuthenticatedMainApp()) await reorderCreditCards([...activeIds, ...archivedIds], next);
+      else await Promise.all([reorderCreditCards(activeIds), reorderCreditCards(archivedIds)]);
       await refresh();
+    } catch (error) {
+      setOrderedCards(creditCards);
+      setActionError(error instanceof Error ? error.message : "Unable to save card order.");
+    } finally {
+      setReordering(false);
     }
   };
 
@@ -491,6 +514,8 @@ export function CreditCardsContent() {
       });
       await refresh();
       setEditCard(null);
+      setActionError("");
+      setRestrictedCard(null);
     } catch (err: unknown) {
       setEditCardError(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -498,14 +523,28 @@ export function CreditCardsContent() {
     }
   };
 
-  const handleDeleteCard = async (id: string, name: string) => {
-    const chargeCount = creditCardCharges.filter((c) => c.card_id === id).length;
-    const msg = chargeCount
-      ? `"${name}" has ${chargeCount} charge(s). Delete card and all its data?`
-      : `Delete "${name}"?`;
+  const handleDeleteCard = async (card: CreditCard) => {
+    if (deletingCardId || reordering) return;
+    const msg = isAuthenticatedMainApp()
+      ? `Delete "${card.name}"? Only unused cards with no balance or financial history can be deleted. Archive cards you want to keep for your records.`
+      : `Delete "${card.name}" and its data?`;
     if (!confirm(msg)) return;
-    await deleteCreditCard(id);
-    await refresh();
+    setDeletingCardId(card.id);
+    setActionError("");
+    setActionMessage("");
+    setRestrictedCard(null);
+    try {
+      await deleteCreditCard(card.id, card.version);
+      await refresh();
+      setActionMessage(`Deleted "${card.name}".`);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Unable to delete card. Please retry."
+      );
+      if (error instanceof Error && /archive/i.test(error.message)) setRestrictedCard(card);
+    } finally {
+      setDeletingCardId(null);
+    }
   };
 
   const handleAddCharge = async (e: React.FormEvent) => {
@@ -793,6 +832,21 @@ export function CreditCardsContent() {
   return (
     <>
       <div data-tour="credit-cards-header">
+        {actionError && (
+          <div role="alert" className="mb-4 rounded-xl border border-red-400 p-4">
+            {actionError}
+            {restrictedCard && (
+              <button className="ml-3 underline" onClick={() => openEditCard(restrictedCard)}>
+                Edit card to archive
+              </button>
+            )}
+          </div>
+        )}
+        {actionMessage && (
+          <p role="status" className="mb-4 text-sm">
+            {actionMessage}
+          </p>
+        )}
         {creditCards.some((c) => c.reconciliation_needed) && (
           <p role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
             Unresolved statement balances are excluded from totals. Review their inclusion in All
@@ -882,7 +936,7 @@ export function CreditCardsContent() {
                 });
                 return (
                   <SortableCard key={card.id} id={card.id}>
-                    {({ Handle }) => (
+                    {({ renderHandle }) => (
                       <div
                         className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${card.archived ? "opacity-60" : ""}`}
                       >
@@ -911,7 +965,7 @@ export function CreditCardsContent() {
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
-                            <Handle />
+                            {renderHandle()}
                             <button
                               onClick={() => openEditCard(card)}
                               className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
@@ -921,7 +975,8 @@ export function CreditCardsContent() {
                               <Pencil className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => handleDeleteCard(card.id, card.name)}
+                              onClick={() => handleDeleteCard(card)}
+                              disabled={!!deletingCardId || reordering}
                               className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
                               aria-label="Delete"
                               title="Delete"
@@ -934,7 +989,11 @@ export function CreditCardsContent() {
                         <div className="mt-4">
                           <div className="flex items-baseline justify-between">
                             <p className="text-2xl font-bold text-text-primary">
-                              {card.reconciliation_needed ? "Review needed" : showBalances ? formatMoney(bal, card.currency) : HIDDEN_BALANCE}
+                              {card.reconciliation_needed
+                                ? "Review needed"
+                                : showBalances
+                                  ? formatMoney(bal, card.currency)
+                                  : HIDDEN_BALANCE}
                             </p>
                             {card.credit_limit > 0 && (
                               <span className="text-xs text-text-secondary">
@@ -992,7 +1051,10 @@ export function CreditCardsContent() {
                           </button>
                           <button
                             onClick={() => {
-                              if(process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true"){window.location.assign("/debts");return;}
+                              if (process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true") {
+                                window.location.assign("/debts");
+                                return;
+                              }
                               setCcCorrectionCardId(card.id);
                               setCcCorrectionAmount(bal.toFixed(2));
                               setCcCorrectionShowInExpenses(false);

@@ -1138,9 +1138,18 @@ export async function getCreditCards() {
   return data as CreditCard[];
 }
 
-export async function reorderAccounts(ids: string[]) {
+export async function reorderAccounts(
+  ids: string[],
+  observed?: Array<{ id: string; version?: number }>
+) {
+  if (ids.length === 0) return;
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    if (!observed || observed.length !== ids.length)
+      throw new Error("Refresh before changing the order.");
+    return mainCommand("ordering.set", {
+      kind: "bank",
+      items: ids.map((id) => ({ id, version: observed.find((row) => row.id === id)?.version })),
+    });
   }
   if (ids.length === 0) return;
   if (isDemoModeRoute()) return;
@@ -1153,9 +1162,18 @@ export async function reorderAccounts(ids: string[]) {
   if (failure?.error) throw failure.error;
 }
 
-export async function reorderCreditCards(ids: string[]) {
+export async function reorderCreditCards(
+  ids: string[],
+  observed?: Array<{ id: string; version?: number }>
+) {
+  if (ids.length === 0) return;
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    if (!observed || observed.length !== ids.length)
+      throw new Error("Refresh before changing the order.");
+    return mainCommand("ordering.set", {
+      kind: "card",
+      items: ids.map((id) => ({ id, version: observed.find((row) => row.id === id)?.version })),
+    });
   }
   if (ids.length === 0) return;
   if (isDemoModeRoute()) return;
@@ -1213,9 +1231,12 @@ export async function updateCreditCard(
   return data as CreditCard;
 }
 
-export async function deleteCreditCard(id: string) {
+export async function deleteCreditCard(id: string, version?: number) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("card.delete", {
+      id,
+      version: version ?? (await mainVersion("creditCards", id)),
+    });
   }
   if (isDemoModeRoute()) {
     demoDeleteCreditCard(id);

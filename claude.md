@@ -46,3 +46,9 @@ The old original and implementation checkouts and their real-data preview must r
 All tests run in Docker. New features require independently persisted/enforced flags before real use. Preserve upstream tests and record failures honestly. Inspect dependency lifecycle scripts before execution; lock versions and avoid blind installs. Do not connect cloud services, AI, market APIs, external financial accounts, or publish a preview without authorization. The current UK_DEMO_ONLY boundary is a local evaluation mechanism, not production auth.
 
 See README.uk.md, docs/uk/product-migration-plan.md, docs/uk/upstream-security-review.md and docs/uk/verification.md. Full inherited intent/audit is preserved in docs/uk/legacy-requirements-reference.md; its earlier base recommendation is historical, not the present decision.
+
+## Card maintenance continuation — 26 November 2026
+
+Card deletion now reaches an owner-scoped transactional command instead of the unavailable adapter. Only unused zero cards and their automatic opening record are removable; history/subscriptions require archive, with a direct Edit Card action. Migration 008 grants only the narrow checked deletion function, not raw history deletion. Subscription guards handle uppercase UUID text. Bank/card ordering is a single complete-list versioned command, persists position ordering and supports keyboard interaction. See docs/uk/card-maintenance.md for verification and upgrade notes. Keep the main app on 13022; stale mockup replies are not a new design task.
+
+Verification: 106 unit, 52 PostgreSQL and 30/30 browser tests passed across all five configured layouts. Typecheck/build passed; lint retains one existing navigation warning. Independent review found no outstanding P1/P2 findings. Migration 008 applied to the existing local preview after a private backup; no personal records deleted or reset.

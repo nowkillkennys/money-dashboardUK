@@ -6,6 +6,7 @@ export default defineConfig({
     "workspace-retry.spec.ts",
     "main-app.spec.ts",
     "main-features.spec.ts",
+    "card-maintenance.spec.ts",
   ],
   workers: 1,
   timeout: 45000,
