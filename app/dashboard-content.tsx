@@ -442,13 +442,15 @@ export function DashboardContent({
     subscriptions,
   ]);
 
-  const portfolioPricesMissing =
-    (AUTHENTICATED_APP && holdings.length > 0) ||
-    holdings.some(
-      (h) =>
-        !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()) &&
-        !(stockQuotes[h.symbol.toUpperCase()]?.price > 0)
-    );
+  const portfolioPricesMissing = AUTHENTICATED_APP
+    ? holdings.some((holding) => Number(holding.shares) > 0)
+    : holdings.some(
+        (h) =>
+          !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()) &&
+          !(stockQuotes[h.symbol.toUpperCase()]?.price > 0)
+      );
+  const netWorthIncomplete =
+    AUTHENTICATED_APP && (portfolioPricesMissing || unresolvedDebtCount > 0);
   const investmentCashBase = AUTHENTICATED_APP
     ? accounts
         .filter((a) => a.type === "investing")
@@ -937,7 +939,7 @@ export function DashboardContent({
                   Total net worth
                 </p>
                 <p className="mt-4 break-words text-4xl font-semibold leading-none tracking-[-0.065em] sm:text-5xl lg:text-6xl">
-                  {AUTHENTICATED_APP && portfolioPricesMissing ? "Incomplete" : m(netWorthBase)}
+                  {netWorthIncomplete ? "Incomplete" : m(netWorthBase)}
                 </p>
               </div>
               <div className="mt-10 flex flex-wrap items-center gap-3 text-xs font-semibold">
@@ -1077,9 +1079,9 @@ export function DashboardContent({
       )}
       {AUTHENTICATED_APP && portfolioPricesMissing && (
         <div role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
-          Current investment prices are unavailable. Net worth is incomplete; known cash minus debts
-          is {m(netWorthBase)}. Position costs and dividend history are not additional cash or
-          market value.
+          Market values are not tracked for your investment holdings. Net worth is incomplete;
+          known cash minus reconciled debts is {m(netWorthBase)}. Position costs and dividend history
+          are not additional cash or market value.
         </div>
       )}
       {unresolvedDebtCount > 0 && (

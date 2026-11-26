@@ -106,3 +106,7 @@ Authenticated income splits now use one transaction.create command with allocati
 ## Investment scope decision — 26 November 2026
 
 The user agreed to leave live investment prices and cash-settled trading out of scope. Preserve manual holdings, cost basis and record-only dividend history. Do not count provider valuation/trade settlement as broken or disconnected features, or reconnect providers to implement them. The authenticated Investments screen describes manual tracking; missing market values still mean net worth cannot be considered complete.
+
+## Dashboard valuation completeness
+
+Total net worth is labelled Incomplete when any debt is unresolved, as well as when positive investment holdings lack market values. The displayed known subtotal excludes unresolved debts and must not be described as a complete total. Zero-share holdings do not block completeness, matching daily snapshot capture. Investment market valuation remains out of scope. After Docker recovered, fresh TypeScript compilation and the production image build passed. No runtime tests were run; the user testing pause remains in force.
