@@ -26,7 +26,7 @@ Next adapters: goals/allocations, subscriptions, holdings/dividends and market-d
 
 ## GitHub access
 
-Read-only checks confirmed the local GitHub account `nowkillkennys` is authenticated and has push/admin permission on `nowkillkennys/money-dashboardUK`. Origin points there; original upstream is retained. No push was requested or performed, and no token was printed or requested from the user.
+Read-only checks confirmed the local GitHub account `nowkillkennys` is authenticated and has push/admin permission on `nowkillkennys/money-dashboardUK`. Origin points there; original upstream is retained. The user subsequently authorized updating `claude.md` and pushing the completed feature branch on 26 November 2026. This does not authorize merging to main or deployment. No token was printed or requested from the user. The push result and exact remote commit are verified and reported in the handover.
 
 ## Final local verification
 
@@ -35,6 +35,6 @@ Read-only checks confirmed the local GitHub account `nowkillkennys` is authentic
 - Full browser suite: **15/15 passed**, five layouts each exercising native main-app ledger, PDF review and lost-response retry/logout. A final main-only rerun passed four profiles but hit a WebKit internal navigation error on iPhone; the unchanged-code focused iPhone rerun passed. This test-engine flake is retained as a limitation, not hidden as a clean final full run. Zero page errors/external requests on the native journeys; narrow layouts checked for overflow.
 - ESLint and TypeScript no-emit passed; final Next production build passed with build networking disabled. Dependencies were unchanged from the recorded remediated lockfile.
 - Additive migrations 006/007 were applied to the local application database after isolated checks. No existing financial rows were rewritten or seeded. The existing personal login was verified against the deployed main-data endpoint (200/no-store); no personal financial values or credentials were printed/saved. Only the verification session was revoked.
-- Git diff whitespace check passed; MIT LICENSE unchanged. Work is committed locally, with no remote push.
+- Git diff whitespace check passed; MIT LICENSE unchanged. Implementation is committed locally; the subsequent user-authorized feature-branch push includes this recorded evidence.
 
 The existing synthetic comparison demo and older original/implementation applications remain separate and their data was not imported automatically.

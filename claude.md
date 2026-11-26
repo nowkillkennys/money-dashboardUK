@@ -1,6 +1,6 @@
 # UK Money Dashboard — accepted direction
 
-The user selected https://github.com/nowkillkennys/money-dashboardUK as the application base on 26 November 2026. Retain https://github.com/NightBaRron1412/money-dashboard as upstream and preserve MIT notices. This decision supersedes the old recommendation to evolve Debt Tracker as the main app. Work locally on the feature branch; do not push/publish/provision without authorization.
+The user selected https://github.com/nowkillkennys/money-dashboardUK as the application base on 26 November 2026. Retain https://github.com/NightBaRron1412/money-dashboard as upstream and preserve MIT notices. This decision supersedes the old recommendation to evolve Debt Tracker as the main app. GitHub API verification on 26 November 2026 confirms this repository is still a fork of the original upstream. The user explicitly authorized updating this guidance and pushing the completed work to `origin/feature/uk-foundation`. This authorization does not include merging to main, public deployment or provisioning services.
 
 ## Approved continuation — 26 November 2026
 
@@ -11,6 +11,20 @@ Current absolute session lifetime is eight hours with server-side revocation. Th
 ## Main-app integration requirement
 
 The user explicitly reaffirmed adapting the original integrated MAIN APP/routes and schema. The standalone workspace is intermediate only. Keep the original feature-rich shell, existing account/transaction/card/goal/allocation/subscription/holding/dividend/reconciliation/snapshot/notification implementations and relationships. Connect them to server-derived ownership and transactional financial commands. Do not call the entire original app a demo or rebuild a separate debt product. No duplicate financial authorities: shared card identity, linked expenses, bank-funded repayments and statement anchors must stay consistent. See docs/uk/main-app-integration.md for the current vertical slice and unported adapters.
+
+## Current delivered integration and evidence
+
+The authenticated main app runs locally at http://127.0.0.1:13022/ using the approved original shell. `/workspace` redirects to `/debts`. The existing username and password remain unchanged; never place credentials in source, documentation or logs. The synthetic demo and former apps remain separate, with their real-data databases untouched.
+
+Overview, accounts, income, expenses, credit cards and reports read the original-shaped per-user ledger. Native bank/card/transaction commands, shared card identities, linked purchase expenses and atomic bank-funded repayments use one financial authority. All Debts and PDF review reconcile against the same anchors and payment/charge history. PDF extraction produces typed observations for explicit review; it does not silently replace balances or retain full card numbers/names. Repeat imports and command retries are protected against duplicate effects.
+
+Goals/allocations, subscriptions and holdings/dividend WRITE adapters remain unported and explicitly reject mutations. Their useful original implementation and schema relationships are preserved. Correction/refund flows, broader duplicate reconciliation and automatic snapshots also remain work; do not describe this slice as a complete migration.
+
+Verified candidate evidence: 106 unit tests across 22 files, 26 PostgreSQL tests across seven files, and 15 browser journeys across five layouts passed. ESLint, TypeScript and an offline production build passed. The final main-only rerun encountered one internal iPhone WebKit navigation error; the unchanged focused rerun passed. Record this flake and the limits of emulation honestly. This guidance-only update reuses that evidence and requires whitespace/diff review, not a redundant full suite. Details: docs/uk/main-app-integration.md and docs/uk/main-app-integration-review.md.
+
+## Repository publication status
+
+The user authorized the feature-branch push on 26 November 2026. Publish completed local commits plus this guidance update to `origin/feature/uk-foundation` without force-pushing; verify the remote head against local HEAD and report the resulting commit. No merge to main or deployment is authorized. Keep the upstream remote and MIT LICENSE/notices intact. `.uk-work`, credentials, environment files, real statements/extracted text and generated test artifacts must stay excluded. Committed fixtures and the verification screenshot are synthetic.
 
 ## Product intent
 
