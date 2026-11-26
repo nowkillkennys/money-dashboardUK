@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { londonCivilDate, offsetCivilDate } from "@/lib/money/uk-locale";
 import { useMoneyData } from "../hooks/use-money-data";
 import { PageHeader, formatMoney, HIDDEN_BALANCE } from "../components/money-ui";
 import { useBalanceVisibility } from "../balance-visibility-provider";
@@ -17,16 +18,15 @@ interface ReconcileResult {
 }
 
 export function ReconcileContent() {
-  const { accounts, loading } = useMoneyData();
+  const { accounts, loading, error } = useMoneyData();
+  const eligibleAccounts = accounts.filter(
+    (account) => !account.archived && account.currency === "GBP"
+  );
   const { showBalances } = useBalanceVisibility();
 
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().split("T")[0];
-  });
-  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [dateFrom, setDateFrom] = useState(() => offsetCivilDate(londonCivilDate(), -30));
+  const [dateTo, setDateTo] = useState(() => londonCivilDate());
   const [expectedBalance, setExpectedBalance] = useState("");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ReconcileResult | null>(null);
@@ -35,7 +35,7 @@ export function ReconcileContent() {
   const [actionMsg, setActionMsg] = useState("");
 
   const pendingGuard = useRef(false);
-  const acct = accounts.find((a) => a.id === selectedAccount);
+  const acct = eligibleAccounts.find((a) => a.id === selectedAccount);
   const currency: CurrencyCode = acct?.currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, currency) : HIDDEN_BALANCE);
 
@@ -46,7 +46,7 @@ export function ReconcileContent() {
     setSearched(true);
   };
   const handleReconcile = async () => {
-    if (!selectedAccount || pendingGuard.current) return;
+    if (!acct || error || pendingGuard.current) return;
     pendingGuard.current = true;
     setRunning(true);
     setActionMsg("");
@@ -130,6 +130,12 @@ export function ReconcileContent() {
       />
 
       <div className="space-y-6">
+        {error && <p role="alert">{error}</p>}
+        {!error && eligibleAccounts.length === 0 && (
+          <p role="status">
+            Create or unarchive a GBP account in Accounts to reconcile its transactions.
+          </p>
+        )}
         <section className="rounded-2xl border border-border-subtle bg-bg-secondary p-6">
           <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-text-primary">
             <Scale className="h-4 w-4 text-accent-purple" />
@@ -146,7 +152,7 @@ export function ReconcileContent() {
               </label>
               <select
                 value={selectedAccount}
-                disabled={running || dupActionRunning}
+                disabled={running || dupActionRunning || !!error}
                 onChange={(e) => {
                   setSelectedAccount(e.target.value);
                   setResult(null);
@@ -157,7 +163,7 @@ export function ReconcileContent() {
                 id="reconcile-field-1"
               >
                 <option value="">Select account...</option>
-                {accounts.map((a) => (
+                {eligibleAccounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} ({a.currency})
                   </option>
@@ -234,7 +240,7 @@ export function ReconcileContent() {
           <div className="mt-4">
             <button
               onClick={handleReconcile}
-              disabled={!selectedAccount || running || dupActionRunning}
+              disabled={!acct || !!error || running || dupActionRunning}
               className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-50"
             >
               {running ? (
