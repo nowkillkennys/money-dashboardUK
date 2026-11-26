@@ -44,7 +44,7 @@ export function GoalsContent() {
     useMoneyData();
   const { fx } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
   const [showContribute, setShowContribute] = useState<string | null>(null);
   const [contributeAmount, setContributeAmount] = useState("");
@@ -730,7 +730,7 @@ export function GoalsContent() {
                       return (
                         <div className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary">
                           <CalendarClock className="h-3 w-3" />
-                          <span>Target: {new Date(goal.target_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })} — need {showBalances ? formatMoney(neededPerMonth) : HIDDEN_BALANCE}/mo</span>
+                          <span>Target: {new Date(goal.target_date + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" })} — need {showBalances ? formatMoney(neededPerMonth) : HIDDEN_BALANCE}/mo</span>
                         </div>
                       );
                     }
@@ -747,7 +747,7 @@ export function GoalsContent() {
                         return (
                           <p className="mt-2 flex items-center gap-1.5 text-xs text-text-secondary">
                             <CalendarClock className="h-3 w-3" />
-                            Est. completion: {estDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                            Est. completion: {estDate.toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                           </p>
                         );
                       }
@@ -760,7 +760,7 @@ export function GoalsContent() {
                         <div className="mt-2 space-y-1">
                           <p className="flex items-center gap-1.5 text-xs text-text-secondary">
                             <CalendarClock className="h-3 w-3" />
-                            Est. completion: {new Date(pred.predictedDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+                            Est. completion: {new Date(pred.predictedDate + "T00:00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
                           </p>
                           {pred.onTrack ? (
                             <span className="inline-flex items-center rounded-lg bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">On track</span>

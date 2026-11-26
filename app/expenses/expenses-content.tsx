@@ -78,7 +78,7 @@ export function ExpensesContent() {
   }, [transactions, creditCardCharges]);
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
   const [sharePercent, setSharePercent] = useState(100);
   const [sharedWith, setSharedWith] = useState("");
@@ -688,7 +688,7 @@ export function ExpensesContent() {
                   >
                     <td className="px-4 py-3 text-text-primary" data-field="date">
                       {(
-                        format(new Date(tx.date + "T00:00:00"), "MMM d, yyyy")
+                        format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-red-400" data-field="amount">
@@ -824,7 +824,9 @@ export function ExpensesContent() {
                   onChange={(e) => setExpenseCurrency(e.target.value as CurrencyCode)}
                   className="w-20 shrink-0 rounded-xl border border-border-subtle bg-bg-elevated px-2 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
                 >
-                  <option value="CAD">CAD</option>
+                  <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
+                <option value="CAD">CAD</option>
                   <option value="USD">USD</option>
                   <option value="EGP">EGP</option>
                 </select>

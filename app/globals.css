@@ -82,7 +82,7 @@ html,
 body {
   background: var(--bg-main);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Inter", var(--font-manrope), "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Arial", "Segoe UI", sans-serif;
   overflow-x: hidden;
   width: 100%;
 }

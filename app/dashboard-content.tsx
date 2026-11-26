@@ -46,6 +46,8 @@ import { isIncludedInMonthlyTotals, monthlyAmount } from "@/lib/money/transactio
 import { TakeTourButton } from "./tour/take-tour-button";
 import { computeNetWorthBase } from "@/lib/money/net-worth";
 
+const UK_DEMO_ONLY = process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true";
+
 const AI_INSIGHTS_CACHE_KEY = "money:ai-insights:v2";
 
 export function DashboardContent({
@@ -82,6 +84,11 @@ export function DashboardContent({
   }, []);
 
   useEffect(() => {
+    if (UK_DEMO_ONLY) {
+      setAiInsights(null);
+      setAiInsightsLoading(false);
+      return;
+    }
     if (demoMode) {
       setAiInsights(
         "Your savings rate jumped to 42% this month — nicely above your 3-month average of 35%. Food spending is well controlled at $134. Consider bumping your Emergency Fund transfer from $750 to $900/paycheck — at that pace you'd hit the $20K target by September instead of December. Your Condo Down Payment still needs attention — the $300/month broker top-ups alone won't close the $77K gap fast enough."
@@ -125,6 +132,10 @@ export function DashboardContent({
   }, []);
 
   useEffect(() => {
+    if (UK_DEMO_ONLY) {
+      setAiGreeting("Explore the UK preview using synthetic accounts and transactions. Changes reset when you reload.");
+      return;
+    }
     if (demoMode) {
       setAiGreeting(
         "You're saving 42% this month, up 7% from last month — keep that momentum rolling. Rent lands in 3 days, and you've got it covered."
@@ -141,7 +152,7 @@ export function DashboardContent({
     fetchAiGreeting();
   }, [demoMode, fetchAiGreeting]);
   const appBase = routeBase;
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
   const goalProgress = computeGoalProgress(goals, goalAccounts, balances, accounts, baseCurrency, fx);
   const getGoalCurrentInBase = (goalId: string) =>
@@ -255,8 +266,8 @@ export function DashboardContent({
 
     if (daysUntilRentReminder <= rentReminderDays) {
       const rentBody = daysUntilRentReminder === 0
-        ? `Rent is due today (${nextRentDateReminder.toLocaleDateString("en-US")}).`
-        : `Rent is due in ${daysUntilRentReminder} day${daysUntilRentReminder !== 1 ? "s" : ""} (${nextRentDateReminder.toLocaleDateString("en-US")}).`;
+        ? `Rent is due today (${nextRentDateReminder.toLocaleDateString("en-GB")}).`
+        : `Rent is due in ${daysUntilRentReminder} day${daysUntilRentReminder !== 1 ? "s" : ""} (${nextRentDateReminder.toLocaleDateString("en-GB")}).`;
       notify(`rent:${nextRentDateKeyReminder}`, "Rent Reminder", rentBody);
     }
 
@@ -274,7 +285,7 @@ export function DashboardContent({
 
     for (const { sub, dueDate, dueDays } of dueSubs.slice(0, 3)) {
       const dueLabel = dueDays === 0 ? "today" : `in ${dueDays} day${dueDays !== 1 ? "s" : ""}`;
-      const body = `${sub.name} bill is due ${dueLabel} (${dueDate.toLocaleDateString("en-US")}).`;
+      const body = `${sub.name} bill is due ${dueLabel} (${dueDate.toLocaleDateString("en-GB")}).`;
       notify(`sub:${sub.id}:${sub.next_billing}`, "Bill Reminder", body);
     }
   }, [loading, error, settings?.rent_day, settings?.rent_reminder_days, settings?.bill_reminder_days, subscriptions]);
@@ -285,7 +296,7 @@ export function DashboardContent({
     const quote = stockQuotes[sym];
     const rawCur = sym === "CASH" ? "USD" : sym === "CASHCAD" ? "CAD" : (quote?.currency ?? "USD");
     const quoteCurrency: CurrencyCode =
-      rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
+      rawCur === "GBP" || rawCur === "EUR" || rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
     const price = sym === "CASH" || sym === "CASHCAD" ? 1 : (quote?.price ?? 0);
     return sum + h.shares * convertCurrency(price, quoteCurrency, baseCurrency, fx);
   }, 0);
@@ -310,7 +321,7 @@ export function DashboardContent({
     const quote = stockQuotes[sym];
     const rawCur = quote?.currency ?? "USD";
     const quoteCurrency: CurrencyCode =
-      rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
+      rawCur === "GBP" || rawCur === "EUR" || rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
     const dayChange = h.shares * (quote?.change ?? 0);
     return sum + convertCurrency(dayChange, quoteCurrency, baseCurrency, fx);
   }, 0);
@@ -322,7 +333,7 @@ export function DashboardContent({
       const quote = stockQuotes[sym];
       const rawCur = sym === "CASH" ? "USD" : sym === "CASHCAD" ? "CAD" : (quote?.currency ?? "USD");
       const quoteCurrency: CurrencyCode =
-        rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
+        rawCur === "GBP" || rawCur === "EUR" || rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
       const price = sym === "CASH" || sym === "CASHCAD" ? 1 : (quote?.price ?? 0);
       const valueBase = h.shares * convertCurrency(price, quoteCurrency, baseCurrency, fx);
       if (grouped[sym]) {
@@ -484,7 +495,7 @@ export function DashboardContent({
 
   const currentHour = today.getHours();
   const greeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
-  const todayLabel = today.toLocaleDateString("en-US", {
+  const todayLabel = today.toLocaleDateString("en-GB", {
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -581,7 +592,7 @@ export function DashboardContent({
   const getNextPaycheckDate = () => {
     const freq = settings?.paycheck_frequency ?? "bi-weekly";
     const paycheckTxs = transactions
-      .filter((tx) => tx.type === "income" && (tx.category || "") === "Paycheck")
+      .filter((tx) => tx.type === "income" && ["Salary", "Paycheck"].includes(tx.category || ""))
       .sort((a, b) => b.date.localeCompare(a.date));
     if (paycheckTxs.length === 0) return null;
 
@@ -606,7 +617,7 @@ export function DashboardContent({
     timelineChips.push(`${sub.name} ${formatRelativeDay(dueDays)}`);
   }
   if (daysUntilPaycheck !== null && daysUntilPaycheck >= 0 && daysUntilPaycheck <= 3) {
-    timelineChips.push(`Paycheck ${formatRelativeDay(daysUntilPaycheck)}`);
+    timelineChips.push(`Salary ${formatRelativeDay(daysUntilPaycheck)}`);
   }
   if (timelineChips.length === 0) {
     timelineChips.push(`No bills due in the next ${billReminderDays} day${billReminderDays !== 1 ? "s" : ""}`);
@@ -787,14 +798,14 @@ export function DashboardContent({
       )}
 
       {/* AI Insights card */}
-      {(aiInsights || aiInsightsLoading) && (
+      {(UK_DEMO_ONLY || aiInsights || aiInsightsLoading) && (
         <div data-tour="ai-insights" className="money-surface mb-5 p-6 animate-in fade-in duration-500">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-bg-elevated text-accent-purple"><BarChart3 className="h-4 w-4" /></span>
-              <h3 className="text-sm font-semibold text-text-primary">AI Insights</h3>
+              <h3 className="text-sm font-semibold text-text-primary">{UK_DEMO_ONLY ? "AI integrations disabled" : "AI Insights"}</h3>
             </div>
-            {(aiInsights || aiInsightsLoading) && (
+            {!UK_DEMO_ONLY && (aiInsights || aiInsightsLoading) && (
               <button
                 onClick={() => fetchAiInsights(true)}
                 disabled={aiInsightsLoading}
@@ -804,7 +815,9 @@ export function DashboardContent({
               </button>
             )}
           </div>
-          {aiInsights ? (
+          {UK_DEMO_ONLY ? (
+            <p className="mt-2 text-sm leading-relaxed text-text-secondary">This preview does not generate financial advice or send account data to an AI provider. AI features need a separate privacy and product review before use.</p>
+          ) : aiInsights ? (
             <p className="mt-2 text-sm leading-relaxed text-text-secondary whitespace-pre-line">
               {aiInsights.split(/(\$?\d[\d,]*\.?\d*%?|\bCA\$[\d,]+\.?\d*|\b\d+%)/g).map((part, i) =>
                 /^\$?\d[\d,]*\.?\d*%?$|^CA\$[\d,]+\.?\d*$|^\d+%$/.test(part)
@@ -836,7 +849,7 @@ export function DashboardContent({
             </p>
             <p className="text-xs text-text-secondary">
               {m(rentAmount)} due on{" "}
-              {nextRentDate.toLocaleDateString("en-US", {
+              {nextRentDate.toLocaleDateString("en-GB", {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
@@ -902,7 +915,7 @@ export function DashboardContent({
                 <span className="ml-auto text-[10px] font-medium text-emerald-500">Paid</span>
               ) : (
                 <span className="ml-auto text-[10px] font-medium text-text-secondary">
-                  Due {nextRentDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  Due {nextRentDate.toLocaleDateString("en-GB", { month: "short", day: "numeric" })}
                 </span>
               )}
             </div>

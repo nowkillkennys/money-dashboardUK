@@ -35,7 +35,7 @@ export function VoiceTransaction({ accounts, creditCards, settings, refresh, dem
   // Confirmation form state
   const [txType, setTxType] = useState<"expense" | "income" | "transfer">("expense");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState<CurrencyCode>("CAD");
+  const [currency, setCurrency] = useState<CurrencyCode>("GBP");
   const [category, setCategory] = useState("");
   const [merchant, setMerchant] = useState("");
   const [date, setDate] = useState(todayEST());
@@ -77,7 +77,7 @@ export function VoiceTransaction({ accounts, creditCards, settings, refresh, dem
         : ["Bills", "Food", "Fun", "Health", "Personal Care", "Rent", "Transport", "Other"],
     [settings?.expense_categories]
   );
-  const baseCurrency = settings?.base_currency ?? "CAD";
+  const baseCurrency = settings?.base_currency ?? "GBP";
 
   const resetForm = useCallback(() => {
     setParsed(null);
@@ -503,7 +503,9 @@ export function VoiceTransaction({ accounts, creditCards, settings, refresh, dem
                     fieldClass("currency")
                   )}
                 >
-                  <option value="CAD">CAD</option>
+                  <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
+                <option value="CAD">CAD</option>
                   <option value="USD">USD</option>
                   <option value="EGP">EGP</option>
                 </select>
@@ -521,7 +523,7 @@ export function VoiceTransaction({ accounts, creditCards, settings, refresh, dem
               const converted = convertCurrency(amt, currency, paymentCurrency, fx);
               return (
                 <p className="text-[11px] text-text-secondary -mt-2">
-                  ≈ {new Intl.NumberFormat("en-US", { style: "currency", currency: paymentCurrency, minimumFractionDigits: 2 }).format(converted)} in account currency
+                  ≈ {new Intl.NumberFormat("en-GB", { style: "currency", currency: paymentCurrency, minimumFractionDigits: 2 }).format(converted)} in account currency
                 </p>
               );
             })()}

@@ -39,7 +39,7 @@ export function ReconcileContent() {
   const [actionMsg, setActionMsg] = useState("");
 
   const acct = accounts.find((a) => a.id === selectedAccount);
-  const currency: CurrencyCode = acct?.currency ?? "CAD";
+  const currency: CurrencyCode = acct?.currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, currency) : HIDDEN_BALANCE);
 
   const handleReconcile = async () => {

@@ -8,6 +8,7 @@ const nextConfig = {
       {
         source: "/:path*",
         headers: [
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -18,10 +19,10 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: https:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+              "style-src 'self' 'unsafe-inline'",
+              "font-src 'self'",
+              "img-src 'self' data:",
+              process.env.UK_DEMO_ONLY === "true" ? "connect-src 'self'" : "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
               "media-src 'self' blob:",
               "frame-ancestors 'none'",
               "base-uri 'self'",

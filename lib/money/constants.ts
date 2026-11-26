@@ -11,7 +11,7 @@ export const MAX_PIN_ATTEMPTS = 5;
 export const LOCKOUT_MINUTES = 15;
 
 /** Allowed currency codes. */
-export const VALID_CURRENCIES = ["CAD", "USD", "EGP"] as const;
+export const VALID_CURRENCIES = ["GBP", "EUR", "CAD", "USD", "EGP"] as const;
 
 /** Session cookie name for PIN auth. */
 export const SESSION_COOKIE = "money_session";

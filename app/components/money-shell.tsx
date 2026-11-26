@@ -34,6 +34,7 @@ function NotConfigured() {
 
 function VoiceTransactionOverlay({ demoMode }: { demoMode: boolean }) {
   const { accounts, creditCards, settings, refresh } = useMoneyData({ demoMode });
+  if (process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true") return null;
   return (
     <VoiceTransaction
       accounts={accounts}
@@ -89,6 +90,7 @@ function AuthGateInner({
         routeBase={routeBase}
       />
       <main className={cn("min-h-screen transition-all duration-200", sidebarCollapsed ? "md:ml-20" : "md:ml-64")}>
+        {demoMode && process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true" && (<div role="note" className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-xs text-slate-800">UK adaptation preview · Synthetic data only · Changes reset on reload · External services and AI disabled · Existing records have not been migrated</div>)}
         <a href="#main-content" className="money-skip-link">Skip to content</a>
         <div className="mx-auto max-w-[1400px] px-4 sm:px-8 lg:px-10 xl:px-12">
           <MoneyToolbar routeBase={routeBase} demoMode={demoMode}><VoiceTransactionOverlay demoMode={demoMode} /></MoneyToolbar>

@@ -1,5 +1,7 @@
 "use client";
 
+import { londonCivilDate, UK_TIME_ZONE } from "@/lib/money/uk-locale";
+
 import { cn } from "@/lib/utils";
 import type { CurrencyCode } from "@/lib/money/database.types";
 import { useEffect, useRef, type ReactNode } from "react";
@@ -180,8 +182,8 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
 /* ------------------------------------------------------------------ */
 /*  Money formatter                                                   */
 /* ------------------------------------------------------------------ */
-export function formatMoney(amount: number, currency: CurrencyCode = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+export function formatMoney(amount: number, currency: CurrencyCode = "GBP"): string {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
@@ -191,8 +193,8 @@ export function formatMoney(amount: number, currency: CurrencyCode = "USD"): str
 
 export const HIDDEN_BALANCE = "••••••";
 
-export function formatMoneyExact(amount: number, currency: CurrencyCode = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+export function formatMoneyExact(amount: number, currency: CurrencyCode = "GBP"): string {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
@@ -200,8 +202,8 @@ export function formatMoneyExact(amount: number, currency: CurrencyCode = "USD")
   }).format(Math.abs(amount) < 0.005 ? 0 : amount);
 }
 
-export function formatMoneyCompact(amount: number, currency: CurrencyCode = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
+export function formatMoneyCompact(amount: number, currency: CurrencyCode = "GBP"): string {
+  return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency,
     notation: "compact",
@@ -211,20 +213,21 @@ export function formatMoneyCompact(amount: number, currency: CurrencyCode = "USD
 }
 
 /* ------------------------------------------------------------------ */
-/*  EST timezone helpers                                               */
+/*  London civil-calendar helpers (legacy export names retained)       */
 /* ------------------------------------------------------------------ */
-const TZ = "America/New_York";
-
-/** Current date/time in EST */
+/** London wall-clock date, using numeric parts rather than parsing a locale string. */
 export function nowEST(): Date {
-  return new Date(
-    new Date().toLocaleString("en-US", { timeZone: TZ })
-  );
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: UK_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date());
+  const part = (name: string) => Number(parts.find(p => p.type === name)!.value);
+  return new Date(part("year"), part("month") - 1, part("day"), part("hour"), part("minute"), part("second"));
 }
 
-/** Today's date string in EST as YYYY-MM-DD */
+/** Today's London civil date, independent of the browser's locale/time zone. */
 export function todayEST(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
+  return londonCivilDate();
 }
 
 /* ------------------------------------------------------------------ */

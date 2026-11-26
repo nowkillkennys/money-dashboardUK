@@ -5,8 +5,9 @@
 
 export type AccountType = "checking" | "investing";
 export type TransactionType = "income" | "expense" | "transfer" | "correction";
-export type CurrencyCode = "CAD" | "USD" | "EGP";
+export type CurrencyCode = "GBP" | "EUR" | "CAD" | "USD" | "EGP";
 export type IncomeSource =
+  | "Salary"
   | "Paycheck"
   | "Stocks"
   | "Bonus"

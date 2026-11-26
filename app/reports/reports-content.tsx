@@ -60,7 +60,7 @@ export function ReportsContent() {
   const { transactions, settings, loading } = useMoneyData();
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
 
   const today = nowEST();

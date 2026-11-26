@@ -52,6 +52,7 @@ import { format } from "date-fns";
 import { useBalanceVisibility } from "../balance-visibility-provider";
 
 const INCOME_SOURCES: IncomeSource[] = [
+  "Salary",
   "Paycheck",
   "Stocks",
   "Bonus",
@@ -63,6 +64,7 @@ const INCOME_SOURCES: IncomeSource[] = [
 ];
 
 const SOURCE_COLORS: Record<string, string> = {
+  Salary: "bg-[#4f8f7e]",
   Paycheck: "bg-[#4f8f7e]",
   Stocks: "bg-[#6581c3]",
   Bonus: "bg-[#8072b2]",
@@ -132,7 +134,7 @@ export function IncomeContent() {
     useMoneyData();
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const defaultPaycheckRecurrence: RecurrenceFrequency =
     settings?.paycheck_frequency ?? "bi-weekly";
   const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
@@ -146,7 +148,7 @@ export function IncomeContent() {
   const [amount, setAmount] = useState(settings?.paycheck_amount?.toString() || "");
   const [refundId, setRefundId] = useState("");
   const [editRefundId, setEditRefundId] = useState("");
-  const [source, setSource] = useState<IncomeSource>("Paycheck");
+  const [source, setSource] = useState<IncomeSource>("Salary");
   const [merchant, setMerchant] = useState("");
   const [accountId, setAccountId] = useState("");
   const [splitEnabled, setSplitEnabled] = useState(false);
@@ -161,7 +163,7 @@ export function IncomeContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState("");
   const [editAmount, setEditAmount] = useState("");
-  const [editSource, setEditSource] = useState<IncomeSource>("Paycheck");
+  const [editSource, setEditSource] = useState<IncomeSource>("Salary");
   const [editMerchant, setEditMerchant] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [incomeNotes, setIncomeNotes] = useState("");
@@ -413,7 +415,7 @@ export function IncomeContent() {
       setShowAdd(false);
       setDate(todayEST());
       setAmount(settings?.paycheck_amount?.toString() || "");
-      setSource("Paycheck");
+      setSource("Salary");
       setRefundId("");
       setMerchant("");
       setAccountId("");
@@ -642,7 +644,7 @@ export function IncomeContent() {
                   >
                     <td className="px-4 py-3 text-text-primary" data-field="date">
                       {(
-                        format(new Date(tx.date + "T00:00:00"), "MMM d, yyyy")
+                        format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")
                       )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-emerald-400" data-field="amount">
@@ -770,7 +772,7 @@ export function IncomeContent() {
                   const nextSource = e.target.value as IncomeSource;
                   setSource(nextSource);
                   if (nextSource === "Refund") { setSplitEnabled(false); setIsRecurring(false); }
-                  if (nextSource === "Paycheck") {
+                  if (nextSource === "Paycheck" || nextSource === "Salary") {
                     setRecurrence(defaultPaycheckRecurrence);
                   }
                 }}

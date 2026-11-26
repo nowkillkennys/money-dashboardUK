@@ -88,8 +88,8 @@ function daysUntil(dateStr: string): number {
 /* ------------------------------------------------------------------ */
 
 const DEMO_DETECTED_SUBS: DetectedSubscription[] = [
-  { merchant: "Uber Eats", avgAmount: 42, frequency: "monthly", occurrences: 4, lastDate: "2026-02-15", confidence: 82, currency: "CAD" },
-  { merchant: "Spotify", avgAmount: 11.99, frequency: "monthly", occurrences: 6, lastDate: "2026-02-10", confidence: 95, currency: "CAD" },
+  { merchant: "Uber Eats", avgAmount: 42, frequency: "monthly", occurrences: 4, lastDate: todayEST(), confidence: 82, currency: "GBP" },
+  { merchant: "Spotify", avgAmount: 11.99, frequency: "monthly", occurrences: 6, lastDate: todayEST(), confidence: 95, currency: "GBP" },
 ];
 
 export function SubscriptionsContent() {
@@ -98,7 +98,7 @@ export function SubscriptionsContent() {
   const { subscriptions, accounts, creditCards, settings, loading, refresh } = useMoneyData();
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
 
   /* Form state */
@@ -126,7 +126,7 @@ export function SubscriptionsContent() {
   const [inlineEditId, setInlineEditId] = useState<string | null>(null);
   const [editSubName, setEditSubName] = useState("");
   const [editSubAmount, setEditSubAmount] = useState("");
-  const [editSubCurrency, setEditSubCurrency] = useState<CurrencyCode>("CAD");
+  const [editSubCurrency, setEditSubCurrency] = useState<CurrencyCode>("GBP");
   const [editSubFrequency, setEditSubFrequency] = useState<RecurrenceFrequency>("monthly");
   const [editSubNextBilling, setEditSubNextBilling] = useState("");
 
@@ -532,7 +532,7 @@ export function SubscriptionsContent() {
                     : "text-text-secondary"
               }
             >
-              {new Date(sub.next_billing + "T00:00:00").toLocaleDateString("en-US", {
+              {new Date(sub.next_billing + "T00:00:00").toLocaleDateString("en-GB", {
                 month: "short",
                 day: "numeric",
               })}
@@ -864,6 +864,8 @@ export function SubscriptionsContent() {
                 onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="subscriptions-field-4"
               >
+                <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
                 <option value="CAD">CAD</option>
                 <option value="USD">USD</option>
                 <option value="EGP">EGP</option>
@@ -1080,7 +1082,7 @@ export function SubscriptionsContent() {
             <div className="rounded-lg border border-accent-blue/20 bg-accent-blue/5 px-4 py-2.5 text-xs text-text-secondary">
               This will {paymentAccountId.startsWith("cc:") ? "add a credit card charge" : "create an expense transaction"} and advance the next billing date to{" "}
               <span className="font-semibold text-text-primary">
-                {new Date(advanceNextBilling(payingSub.next_billing, payingSub.frequency) + "T00:00:00").toLocaleDateString("en-US", {
+                {new Date(advanceNextBilling(payingSub.next_billing, payingSub.frequency) + "T00:00:00").toLocaleDateString("en-GB", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",

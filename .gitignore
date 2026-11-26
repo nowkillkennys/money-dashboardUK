@@ -19,3 +19,6 @@ certificates/
 test-results/
 playwright-report/
 .playwright-cli/
+
+.uk-work/
+artifacts/

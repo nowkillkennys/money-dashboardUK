@@ -1,5 +1,4 @@
 import "./globals.css";
-import { Manrope } from "next/font/google";
 import type { Metadata, Viewport } from "next/types";
 import { ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
@@ -8,7 +7,7 @@ import { isAnalyticsEnabled, isSpeedInsightsEnabled } from "@/lib/analytics";
 import { Providers } from "./providers";
 import { SwRegister } from "./sw-register";
 
-const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
+
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -20,7 +19,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://money.amirshetaia.com"),
+  metadataBase: new URL("http://localhost:13021"),
   title: "Money | Personal Finance",
   description: "A clear view of accounts, spending, investments, goals, and cash flow.",
   robots: { index: false, follow: false },
@@ -35,7 +34,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Money | Personal Finance",
     description: "A clear view of accounts, spending, investments, goals, and cash flow.",
-    url: "https://money.amirshetaia.com",
+    url: "http://localhost:13021",
     siteName: "Money",
     images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Finance Dashboard Preview" }],
     type: "website",
@@ -52,8 +51,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${manrope.variable} antialiased text-sm sm:text-base`} suppressHydrationWarning>
+    <html lang="en-GB" suppressHydrationWarning>
+      <body className="antialiased text-sm sm:text-base" suppressHydrationWarning>
         <Providers>{children}</Providers>
         <SwRegister />
         {isAnalyticsEnabled ? <Analytics /> : null}

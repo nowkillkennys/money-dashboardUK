@@ -1,6 +1,10 @@
 "use client";
 import { TransactionEditDialog, EditField } from "../components/transaction-edit-dialog";
 
+import { usePathname } from "next/navigation";
+import { DEMO_FX } from "@/lib/money/uk-locale";
+import { convertCurrency } from "@/lib/money/fx";
+import { useMoneyFx } from "../hooks/use-money-fx";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useMoneyData } from "../hooks/use-money-data";
 import { useBalanceVisibility } from "../balance-visibility-provider";
@@ -77,6 +81,9 @@ const CHART_CURSOR = "var(--bg-elevated)";
 /*  Component                                                         */
 /* ------------------------------------------------------------------ */
 export function StocksContent() {
+  const pathname = usePathname();
+  const demo = pathname.startsWith("/demo");
+  const { fx } = useMoneyFx();
   const { accounts, holdings, dividends, loading, refresh } = useMoneyData();
   const { showBalances } = useBalanceVisibility();
 
@@ -86,19 +93,14 @@ export function StocksContent() {
   const [lastFetched, setLastFetched] = useState<Date | null>(null);
 
   // Currency toggle (display currency)
-  const [currency, setCurrency] = useState<CurrencyCode>("CAD");
-  const [fxRate, setFxRate] = useState(1); // USD→CAD rate
-
-  const currencySymbol = currency === "CAD" ? "C$" : "$";
+  const [currency, setCurrency] = useState<CurrencyCode>("GBP");
+  const fxRate = fx.USDGBP ?? 1;
+  const currencySymbol = currency === "GBP" ? "£" : "$";
   const m = (v: number) => (showBalances ? formatMoney(v, currency) : HIDDEN_BALANCE);
-
-  const norm = (c: unknown): CurrencyCode => (c === "CAD" || c === "USD" ? c : "USD");
-  const fxBetween = useCallback((from: CurrencyCode, to: CurrencyCode): number => {
-    if (from === to) return 1;
-    if (from === "USD" && to === "CAD") return fxRate || 1;
-    if (from === "CAD" && to === "USD") return fxRate > 0 ? 1 / fxRate : 1;
-    return 1;
-  }, [fxRate]);
+  const norm = (c: unknown): CurrencyCode =>
+    c === "GBP" || c === "EUR" || c === "CAD" || c === "USD" || c === "EGP" ? c : "USD";
+  const fxBetween = useCallback((from: CurrencyCode, to: CurrencyCode): number =>
+    convertCurrency(1, from, to, demo ? DEMO_FX : fx), [fx, demo]);
 
   // Modal state
   const [showAdd, setShowAdd] = useState(false);
@@ -106,7 +108,7 @@ export function StocksContent() {
   const [symbol, setSymbol] = useState("");
   const [shares, setShares] = useState("");
   const [costBasis, setCostBasis] = useState("");
-  const [costCurrency, setCostCurrency] = useState<CurrencyCode>("CAD");
+  const [costCurrency, setCostCurrency] = useState<CurrencyCode>("GBP");
   const [accountId, setAccountId] = useState("");
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -207,11 +209,12 @@ export function StocksContent() {
     setQuotesLoading(true);
     setQuotesError("");
     try {
-      // Fetch quotes + USD/CAD rate in parallel
-      const [quotesRes, fxRes] = await Promise.all([
-        fetch(`/api/stocks?symbols=${uniqueSymbols.join(",")}`),
-        fetch(`/api/stocks?symbols=USDCAD=X`),
-      ]);
+      if (demo) {
+        setQuotes({});
+        setQuotesError("");
+        return;
+      }
+      const quotesRes = await fetch(`/api/stocks?symbols=${uniqueSymbols.join(",")}`);
       const data = await quotesRes.json();
       if (data.results) {
         setQuotes(data.results);
@@ -219,15 +222,12 @@ export function StocksContent() {
       } else {
         setQuotesError("Failed to fetch prices");
       }
-      const fxData = await fxRes.json();
-      const rate = fxData?.results?.["USDCAD=X"]?.price;
-      if (rate && rate > 0) setFxRate(rate);
     } catch {
       setQuotesError("Network error fetching prices");
     } finally {
       setQuotesLoading(false);
     }
-  }, [uniqueSymbols]);
+  }, [uniqueSymbols, demo]);
 
   useEffect(() => {
     if (uniqueSymbols.length > 0) {
@@ -577,7 +577,9 @@ export function StocksContent() {
               className="w-24 rounded-xl border border-border-subtle bg-bg-elevated px-3 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
             >
               <option value="USD">USD</option>
-              <option value="CAD">CAD</option>
+              <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
+                <option value="CAD">CAD</option>
             </select>
           </div>
         </div>
@@ -616,10 +618,10 @@ export function StocksContent() {
       <div data-tour="stocks-header">
       <PageHeader
         title="Stocks & Holdings"
-        description="Track your investment portfolio"
+        description={demo ? "Synthetic investment cash only · fixed illustrative FX · no live prices" : "Track your investment portfolio"}
         action={
           <div className="flex items-center gap-2">
-            {/* USD / CAD toggle */}
+            {/* USD / GBP toggle */}
             <div className="inline-flex rounded-xl border border-border-subtle overflow-hidden text-xs font-medium">
               <button
                 onClick={() => setCurrency("USD")}
@@ -632,14 +634,14 @@ export function StocksContent() {
                 USD
               </button>
               <button
-                onClick={() => setCurrency("CAD")}
+                onClick={() => setCurrency("GBP")}
                 className={`px-3 py-2 transition ${
-                  currency === "CAD"
+                  currency === "GBP"
                     ? "bg-accent-purple text-white"
                     : "bg-bg-secondary text-text-secondary hover:text-text-primary"
                 }`}
               >
-                CAD
+                GBP
               </button>
             </div>
             <button
@@ -682,7 +684,7 @@ export function StocksContent() {
         <StatCard
           title={`Portfolio Value (${currency})`}
           value={missingPrices ? "Unavailable" : m(totalMarketValue)}
-          subtitle={currency === "CAD" && fxRate !== 1 ? `1 USD = ${fxRate.toFixed(4)} CAD` : undefined}
+          subtitle={currency === "GBP" && fxRate !== 1 ? `1 USD = ${fxRate.toFixed(4)} GBP` : undefined}
           icon={<DollarSign className="h-5 w-5" />}
         />
         <StatCard
@@ -1179,7 +1181,7 @@ export function StocksContent() {
                     <td className="px-4 py-3 text-text-secondary">
                       {(
                         new Date(d.date + "T00:00:00").toLocaleDateString(
-                          "en-US",
+                          "en-GB",
                           { month: "short", day: "numeric", year: "numeric" }
                         )
                       )}

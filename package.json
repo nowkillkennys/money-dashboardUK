@@ -1,6 +1,6 @@
 {
   "name": "money-dashboard",
-  "version": "1.0.0",
+  "version": "1.0.0-uk.1",
   "private": true,
   "scripts": {
     "dev": "next dev",

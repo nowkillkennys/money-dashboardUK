@@ -85,13 +85,13 @@ export function AccountsContent() {
   };
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
   const [showAdd, setShowAdd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("checking");
-  const [currency, setCurrency] = useState<CurrencyCode>("CAD");
+  const [currency, setCurrency] = useState<CurrencyCode>("GBP");
   const [startingBalance, setStartingBalance] = useState("");
   const [formError, setFormError] = useState("");
 
@@ -99,7 +99,7 @@ export function AccountsContent() {
   const [editing, setEditing] = useState<Account | null>(null);
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState<AccountType>("checking");
-  const [editCurrency, setEditCurrency] = useState<CurrencyCode>("CAD");
+  const [editCurrency, setEditCurrency] = useState<CurrencyCode>("GBP");
   const [editStarting, setEditStarting] = useState("");
   const [editColor, setEditColor] = useState<string | null>(null);
   const [editArchived, setEditArchived] = useState(false);
@@ -489,7 +489,7 @@ export function AccountsContent() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard
-          title={`Checking Total (≈ ${baseCurrency})`}
+          title={`Current accounts total (≈ ${baseCurrency})`}
           value={m(cashTotalBase)}
           icon={<Wallet className="h-5 w-5" />}
         />
@@ -672,7 +672,7 @@ export function AccountsContent() {
                     >
                       <td className="whitespace-nowrap px-3 py-3 text-text-primary sm:px-4">
                         {(
-                          format(new Date(tx.date + "T00:00:00"), "MMM d, yyyy")
+                          format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")
                         )}
                       </td>
                       <td className="px-3 py-3 text-text-primary sm:px-4">
@@ -775,7 +775,7 @@ export function AccountsContent() {
                           className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
                         >
                           <td className="px-3 py-2.5 text-text-secondary sm:px-4">
-                            {format(new Date(tx.date + "T00:00:00"), "MMM d, yyyy")}
+                            {format(new Date(tx.date + "T00:00:00"), "d MMM yyyy")}
                           </td>
                           <td className="px-3 py-2.5 sm:px-4">
                             <span className={`inline-flex rounded-lg px-2 py-0.5 text-[11px] font-medium ${
@@ -859,7 +859,7 @@ export function AccountsContent() {
                 onChange={(e) => setType(e.target.value as AccountType)}
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-2"
               >
-                <option value="checking">Checking</option>
+                <option value="checking">Current account</option>
                 <option value="investing">Investing</option>
               </select>
             </div>
@@ -872,6 +872,8 @@ export function AccountsContent() {
                 onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-3"
               >
+                <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
                 <option value="CAD">CAD</option>
                 <option value="USD">USD</option>
                 <option value="EGP">EGP</option>
@@ -940,7 +942,7 @@ export function AccountsContent() {
                 onChange={(e) => setEditType(e.target.value as AccountType)}
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-6"
               >
-                <option value="checking">Checking</option>
+                <option value="checking">Current account</option>
                 <option value="investing">Investing</option>
               </select>
             </div>
@@ -953,6 +955,8 @@ export function AccountsContent() {
                 onChange={(e) => setEditCurrency(e.target.value as CurrencyCode)}
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="accounts-field-7"
               >
+                <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
                 <option value="CAD">CAD</option>
                 <option value="USD">USD</option>
                 <option value="EGP">EGP</option>

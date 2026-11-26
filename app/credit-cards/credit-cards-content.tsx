@@ -112,7 +112,7 @@ export function CreditCardsContent() {
   }, [transactions, creditCardCharges]);
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) =>
     showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
 
@@ -129,7 +129,7 @@ export function CreditCardsContent() {
   // Add card modal
   const [showAddCard, setShowAddCard] = useState(false);
   const [cardName, setCardName] = useState("");
-  const [cardCurrency, setCardCurrency] = useState<CurrencyCode>("CAD");
+  const [cardCurrency, setCardCurrency] = useState<CurrencyCode>("GBP");
   const [cardLimit, setCardLimit] = useState("");
   const [cardLinkedAccount, setCardLinkedAccount] = useState("");
   const [cardError, setCardError] = useState("");
@@ -137,7 +137,7 @@ export function CreditCardsContent() {
   // Edit card modal
   const [editCard, setEditCard] = useState<CreditCard | null>(null);
   const [editCardName, setEditCardName] = useState("");
-  const [editCardCurrency, setEditCardCurrency] = useState<CurrencyCode>("CAD");
+  const [editCardCurrency, setEditCardCurrency] = useState<CurrencyCode>("GBP");
   const [editCardLimit, setEditCardLimit] = useState("");
   const [editCardLinkedAccount, setEditCardLinkedAccount] = useState("");
   const [editCardColor, setEditCardColor] = useState<string | null>(null);
@@ -1026,7 +1026,7 @@ export function CreditCardsContent() {
                       </td>
                       <td className="px-4 py-3 text-text-primary" data-field="date">
                         {(
-                          format(new Date(charge.date + "T00:00:00"), "MMM d, yyyy")
+                          format(new Date(charge.date + "T00:00:00"), "d MMM yyyy")
                         )}
                       </td>
                       <td className="px-4 py-3 text-text-primary" data-field="account">
@@ -1182,7 +1182,7 @@ export function CreditCardsContent() {
                       className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
                     >
                       <td className="px-4 py-3 text-text-primary" data-field="date">
-                        {format(new Date(payment.date + "T00:00:00"), "MMM d, yyyy")}
+                        {format(new Date(payment.date + "T00:00:00"), "d MMM yyyy")}
                       </td>
                       <td className="px-4 py-3 text-text-primary" data-field="merchant">
                         <span className="block max-w-[130px] truncate" title={card?.name || undefined}>{card?.name || "—"}</span>
@@ -1276,6 +1276,8 @@ export function CreditCardsContent() {
                 }
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-2"
               >
+                <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
                 <option value="CAD">CAD</option>
                 <option value="USD">USD</option>
                 <option value="EGP">EGP</option>
@@ -1367,6 +1369,8 @@ export function CreditCardsContent() {
                 }
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-6"
               >
+                <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
                 <option value="CAD">CAD</option>
                 <option value="USD">USD</option>
                 <option value="EGP">EGP</option>

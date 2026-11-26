@@ -70,13 +70,13 @@ const normalizeCategories = (raw: string[]) => {
 export function SettingsContent() {
   const { settings, plans, accounts, goals, loading, refresh } = useMoneyData();
   const { showBalances } = useBalanceVisibility();
-  const baseCurrency: CurrencyCode = settings?.base_currency ?? "CAD";
+  const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Local form state
-  const [baseCurrencyInput, setBaseCurrencyInput] = useState<CurrencyCode>("CAD");
+  const [baseCurrencyInput, setBaseCurrencyInput] = useState<CurrencyCode>("GBP");
   const [rentAmount, setRentAmount] = useState("2100");
   const [rentDay, setRentDay] = useState("28");
   const [rentReminderDays, setRentReminderDays] = useState("7");
@@ -107,7 +107,7 @@ export function SettingsContent() {
   // Populate from loaded settings
   useEffect(() => {
     if (settings) {
-      setBaseCurrencyInput(settings.base_currency ?? "CAD");
+      setBaseCurrencyInput(settings.base_currency ?? "GBP");
       setRentAmount(settings.rent_amount.toString());
       setRentDay(settings.rent_day.toString());
       setRentReminderDays((settings.rent_reminder_days ?? 7).toString());
@@ -230,6 +230,8 @@ export function SettingsContent() {
                 onChange={(e) => setBaseCurrencyInput(e.target.value as CurrencyCode)}
                 className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-1"
               >
+                <option value="GBP">GBP</option>
+                <option value="EUR">EUR</option>
                 <option value="CAD">CAD</option>
                 <option value="USD">USD</option>
                 <option value="EGP">EGP</option>
@@ -405,7 +407,7 @@ export function SettingsContent() {
           </div>
         </details>
 
-        <BackgroundNotificationSettings />
+        {process.env.NEXT_PUBLIC_UK_DEMO_ONLY !== "true" && <BackgroundNotificationSettings />}
 
         {/* Reminder Timing */}
         <details id="settings-reminders" className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Reminder Timing</h2></summary>
