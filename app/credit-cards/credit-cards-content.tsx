@@ -252,6 +252,8 @@ export function CreditCardsContent() {
   );
 
   // Inline edit charge state
+  const historyDeletionPending = useRef(false);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const editChargeSaving = useRef(false);
   const [editChargeSnapshot, setEditChargeSnapshot] = useState<{
     charge: CreditCardCharge;
@@ -625,9 +627,41 @@ export function CreditCardsContent() {
   };
 
   const handleDeleteCharge = async (id: string) => {
-    if (!confirm("Delete this charge?")) return;
-    await deleteCreditCardCharge(id);
-    await refresh();
+    if (historyDeletionPending.current || deletingCardId || reordering) return;
+    historyDeletionPending.current = true;
+    setActionError("");
+    setActionMessage("");
+    try {
+      const charge = creditCardCharges.find((item) => item.id === id);
+      const card = creditCards.find((item) => item.id === charge?.card_id);
+      const linked = transactions.find(
+        (item) => item.id === charge?.linked_transaction_id || item.linked_charge_id === id
+      );
+      if (
+        isAuthenticatedMainApp() &&
+        (!charge?.version || !card?.version || (linked && !linked.version))
+      )
+        throw new Error("Reload this card before deleting the charge.");
+      const message = isAuthenticatedMainApp()
+        ? `Delete this ${m(charge!.amount)} charge${linked ? " and its linked expense" : ""}? Recorded repayments and reported statements are retained. The card may need review in All Debts. This does not reverse a purchase with your lender.`
+        : "Delete this charge?";
+      if (!confirm(message)) return;
+      setDeletingHistoryId(id);
+      await deleteCreditCardCharge(id, {
+        version: charge?.version,
+        card_version: card?.version,
+        ...(linked ? { transaction_version: linked.version } : {}),
+      });
+      await refresh();
+      setActionMessage(
+        "Charge deleted. Review All Debts if the card is marked for reconciliation."
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to delete charge.");
+    } finally {
+      historyDeletionPending.current = false;
+      setDeletingHistoryId(null);
+    }
   };
 
   const startEditCharge = (charge: CreditCardCharge) => {
@@ -758,9 +792,39 @@ export function CreditCardsContent() {
   };
 
   const handleDeletePayment = async (id: string) => {
-    if (!confirm("Delete this payment?")) return;
-    await deleteCreditCardPayment(id);
-    await refresh();
+    if (historyDeletionPending.current || deletingCardId || reordering) return;
+    historyDeletionPending.current = true;
+    setActionError("");
+    setActionMessage("");
+    try {
+      const payment = creditCardPayments.find((item) => item.id === id);
+      const card = creditCards.find((item) => item.id === payment?.card_id);
+      const bank = accounts.find((item) => item.id === payment?.account_id);
+      if (
+        isAuthenticatedMainApp() &&
+        (!payment?.version || !card?.version || (payment.account_id && !bank?.version))
+      )
+        throw new Error("Reload this card before deleting the payment.");
+      const message = isAuthenticatedMainApp()
+        ? `Delete this recorded ${m(payment!.amount)} payment? ${bank ? `This restores its outflow to ${bank.name} in the app. ` : ""}Its statement record is retained as voided. Reported balances remain unchanged and may need review in All Debts. This does not reverse a real bank payment.`
+        : "Delete this payment?";
+      if (!confirm(message)) return;
+      setDeletingHistoryId(id);
+      await deleteCreditCardPayment(id, {
+        version: payment?.version,
+        card_version: card?.version,
+        bank_versions: bank?.version ? [{ id: bank.id, version: bank.version }] : [],
+      });
+      await refresh();
+      setActionMessage(
+        "Payment removed; its statement record is retained as voided. Review All Debts if reconciliation is needed."
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Unable to delete payment.");
+    } finally {
+      historyDeletionPending.current = false;
+      setDeletingHistoryId(null);
+    }
   };
 
   const handleCCCorrection = async (e: React.FormEvent) => {
@@ -1090,7 +1154,7 @@ export function CreditCardsContent() {
                               {isAuthenticatedMainApp() && card.archived && (
                                 <button
                                   aria-label="Restore card"
-                                  disabled={!!deletingCardId || reordering}
+                                  disabled={!!deletingCardId || reordering || !!deletingHistoryId}
                                   className="text-sm underline"
                                   onClick={async () => {
                                     setDeletingCardId(card.id);
@@ -1125,7 +1189,7 @@ export function CreditCardsContent() {
                               </button>
                               <button
                                 onClick={() => handleDeleteCard(card)}
-                                disabled={!!deletingCardId || reordering}
+                                disabled={!!deletingCardId || reordering || !!deletingHistoryId}
                                 className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
                                 aria-label="Delete"
                                 title="Delete"
@@ -1454,6 +1518,7 @@ export function CreditCardsContent() {
                                 )}
                               <button
                                 aria-label="Edit charge"
+                                disabled={!!deletingHistoryId}
                                 onClick={() => startEditCharge(charge)}
                                 className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
                               >
@@ -1461,6 +1526,7 @@ export function CreditCardsContent() {
                               </button>
                               <button
                                 aria-label="Delete charge"
+                                disabled={!!deletingHistoryId}
                                 onClick={() => handleDeleteCharge(charge.id)}
                                 className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
                               >
@@ -1648,12 +1714,14 @@ export function CreditCardsContent() {
                             <div className="flex items-center justify-end gap-1">
                               <button
                                 aria-label="Edit payment"
+                                disabled={!!deletingHistoryId}
                                 onClick={() => startEditPayment(payment)}
                                 className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
                               >
                                 <Pencil className="h-4 w-4" />
                               </button>
                               <button
+                                disabled={!!deletingHistoryId}
                                 onClick={() => handleDeletePayment(payment.id)}
                                 className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
                                 aria-label="Delete"

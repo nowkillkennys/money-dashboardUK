@@ -1,3 +1,4 @@
+import { executeHistoryDeletionCommand } from "./main-history-deletion";
 import { goalContributionFields, executeGoalContributionCommand } from "./main-goal-contribution";
 import { paymentEditFields, executePaymentEditCommand } from "./main-payment-edit";
 import { chargeEditFields, executeChargeEditCommand } from "./main-charge-edit";
@@ -203,6 +204,7 @@ export async function executeMainCommand(
     if (input.currency && input.currency !== "GBP")
       throw new HttpError(400, "This workspace uses GBP");
     const extension =
+      (await executeHistoryDeletionCommand(c, owner, input)) ??
       (await executeChargeEditCommand(c, owner, input)) ??
       (await executePaymentEditCommand(c, owner, input)) ??
       (await executeSubscriptionPaymentCommand(c, owner, input)) ??

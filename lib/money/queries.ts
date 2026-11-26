@@ -1472,9 +1472,23 @@ export async function createLinkedCreditCardCharge(
   return ccCharge;
 }
 
-export async function deleteCreditCardCharge(id: string) {
+export interface CardHistoryDeletionContext {
+  version?: number;
+  card_version?: number;
+  transaction_version?: number;
+  bank_versions?: Array<{ id: string; version: number }>;
+}
+
+export async function deleteCreditCardCharge(id: string, observed?: CardHistoryDeletionContext) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("charge.delete", {
+      id,
+      version: observed?.version,
+      card_version: observed?.card_version,
+      ...(observed?.transaction_version !== undefined
+        ? { transaction_version: observed.transaction_version }
+        : {}),
+    });
   }
   if (isDemoModeRoute()) {
     demoDeleteCreditCardCharge(id);
@@ -1664,9 +1678,14 @@ export async function updateCreditCardPayment(
   if (error) throw error;
 }
 
-export async function deleteCreditCardPayment(id: string) {
+export async function deleteCreditCardPayment(id: string, observed?: CardHistoryDeletionContext) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("payment.delete", {
+      id,
+      version: observed?.version,
+      card_version: observed?.card_version,
+      bank_versions: observed?.bank_versions,
+    });
   }
   if (isDemoModeRoute()) {
     demoDeleteCreditCardPayment(id);

@@ -49,7 +49,7 @@ function canonical(value: unknown): string {
 export async function readDebtAccounts(client: PoolClient) {
   const rows = (
     await client.query(
-      "SELECT id,name,kind,reported_minor,as_of::text,version FROM workspace_accounts ORDER BY name,id"
+      "SELECT id,name,kind,reported_minor,as_of::text,version,review_required FROM workspace_accounts ORDER BY name,id"
     )
   ).rows;
   const links = (
@@ -84,13 +84,24 @@ export async function readDebtAccounts(client: PoolClient) {
     const excludedCharges = cs
       .filter((c) => c.disposition === "excluded")
       .reduce((sum, c) => sum + parseMoneyMinor(c.amount), 0);
-    const derived = deriveDebtBalance(
-      formatMoneyDecimal(Number(a.reported_minor) + excludedCharges),
-      ps,
-      ps
-        .filter((p) => p.status === "posted")
-        .map((p) => ({ paymentId: p.id, disposition: p.disposition }))
-    );
+    const derived = a.review_required
+      ? {
+          reportedBalance: formatMoneyDecimal(Number(a.reported_minor)),
+          trackedBalance: null,
+          reconciliationNeeded: true,
+          pendingTotal: formatMoneyDecimal(
+            ps
+              .filter((p) => p.status === "pending")
+              .reduce((sum, p) => sum + parseMoneyMinor(p.amount), 0)
+          ),
+        }
+      : deriveDebtBalance(
+          formatMoneyDecimal(Number(a.reported_minor) + excludedCharges),
+          ps,
+          ps
+            .filter((p) => p.status === "posted")
+            .map((p) => ({ paymentId: p.id, disposition: p.disposition }))
+        );
     const unknownCharge = cs.some((c) => c.disposition === "unresolved");
     return {
       ...a,
@@ -303,11 +314,10 @@ export async function executeCommand(
           );
         const minor = amount(input.amount);
         const asOf = date(input.asOf);
-        await client.query("UPDATE workspace_accounts SET reported_minor=$1,as_of=$2 WHERE id=$3", [
-          minor,
-          asOf,
-          accountId,
-        ]);
+        await client.query(
+          "UPDATE workspace_accounts SET reported_minor=$1,as_of=$2,review_required=false WHERE id=$3",
+          [minor, asOf, accountId]
+        );
         for (const d of decisions)
           await client.query(
             "UPDATE workspace_payments SET disposition=$1 WHERE id=$2 AND account_id=$3",
