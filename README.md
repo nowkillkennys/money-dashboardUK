@@ -1,144 +1,66 @@
-> UK adaptation: read [README.uk.md](README.uk.md) for the separate synthetic demo and authenticated local workspace. An explicit application mode is required; the historical single-household setup below is not the UK authentication path.
+# Money Dashboard UK
 
-# Money Dashboard
+A UK personal finance app adapting the original Money Dashboard interface into an authenticated, per-user bank and debt tracker. The current local slice connects the existing accounts, income, expenses, credit cards and reports to a shared PostgreSQL ledger, with All Debts and reviewed PDF statement imports alongside them.
 
-A full-featured personal finance tracking dashboard built with Next.js. Track accounts, expenses, income, stock portfolios, credit cards, subscriptions, and savings goals — all in one place. Includes AI-powered insights, voice transaction entry, and a complete demo mode that works without any backend.
+This is a standalone repository with preserved [upstream provenance](UPSTREAM.md) and MIT attribution. It is not affiliated with the discontinued Money Dashboard service. It is an actively developed local application, not a finished public financial service.
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue?logo=typescript)
-![Supabase](https://img.shields.io/badge/Supabase-Postgres-3ecf8e?logo=supabase)
-![License](https://img.shields.io/badge/License-MIT-green)
+## What works now
 
-## Features
+- Username/password sign-in, revocable eight-hour sessions and server-enforced per-user data isolation. No default password or public registration is shipped. Idle locking/PIN unlock is planned, not implemented.
+- Native bank accounts, income/expenses/transfers, cards, linked purchases and bank-funded repayments. A card purchase appears once in expenses; a repayment reduces bank cash and card debt once, without creating another spending expense.
+- All Debts with manual tracking and reported balance/date anchors. Card and statement review share the same identity and payment/charge history rather than maintaining competing balances. Pending and unresolved items remain explicit.
+- Local PDF text extraction and review before confirmation. Imports distinguish APR from simple annual rates, forecast interest from posted interest, and conditional percentage fees from actual charges. Observations are not automatically accepted as product terms or transactions. File hashes and transactional retry handling prevent duplicate effects.
+- GBP-focused writes and UK formatting, with Europe/London runtime configuration. Legacy multi-currency types remain in source; live FX and non-GBP write support are not active in this slice.
 
-- **Multi-currency accounts** — CAD, USD, and EGP with live exchange rates
-- **AI-powered insights** — Gemini-driven spending analysis, anomaly detection, and a conversational finance chat
-- **Voice transaction entry** — add expenses and income by speaking
-- **Stock portfolio tracking** — real-time quotes via Yahoo Finance, gain/loss, dividends, and day-change
-- **Credit card management** — track cards, charges, cashback rewards, and statement cycles
-- **Subscription detection** — automatic detection and tracking of recurring bills
-- **Goal-based savings** — set targets with smart allocation across linked accounts
-- **Bank reconciliation** — compare expected vs. actual balances and resolve discrepancies
-- **Monthly & yearly reports** — income vs. expenses, category breakdowns, net worth trends (Recharts)
-- **Push notifications** — web push reminders for rent and upcoming bills (via Vercel Cron)
-- **PIN-based authentication** — lightweight auth with bcrypt-hashed PINs
-- **Budget tracking** — monthly budget with category breakdown and over-budget alerts
-- **90-day cash flow forecast** — projected balances based on recurring income and expenses
-- **Full demo mode** — explore every feature at `/demo` with no sign-up or database required
+The original feature-rich shell and useful goals, allocations, subscriptions, investment holdings/dividends, reconciliation and snapshot implementations are preserved. **Goals/allocations, subscription and investment write adapters are still awaiting integration** and reject mutations in authenticated mode. Further correction/refund flows, duplicate reconciliation and automatic snapshots also remain. Reports and overview use the connected data; retained source or demo screens do not mean every original feature is operational.
 
-## Tech Stack
+See the [integration handover](docs/uk/main-app-integration.md) for exact scope and limitations, and the [migration plan](docs/uk/product-migration-plan.md) for the wider roadmap.
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | [Next.js 16](https://nextjs.org/) (App Router) |
-| Language | TypeScript |
-| Styling | Tailwind CSS, Radix UI, Framer Motion |
-| Database | [Supabase](https://supabase.com/) (Postgres) |
-| AI | [Google Gemini](https://ai.google.dev/) |
-| Charts | [Recharts](https://recharts.org/) |
-| Notifications | Web Push (VAPID) |
-| Auth | PIN-based (bcrypt) |
-| Deployment | [Vercel](https://vercel.com/) |
+## Run locally
 
-## Getting Started
+Use Docker with Compose and Node.js 22 to generate the private local configuration. A fresh checkout does not require a Supabase project, Gemini key or host dependency installation.
 
-### Prerequisites
-
-- Node.js 20.9+
-- [pnpm](https://pnpm.io/) (recommended) or npm
-- A [Supabase](https://supabase.com/) project (free tier works)
-- A [Google Gemini API key](https://aistudio.google.com/apikey) (for AI features)
-
-### Installation
-
-```bash
-git clone https://github.com/your-username/money-dashboard.git
-cd money-dashboard
-pnpm install
+```sh
+git clone https://github.com/nowkillkennys/money-dashboardUK.git
+cd money-dashboardUK
+node scripts/workspace-env.cjs
+docker compose --env-file .uk-work/workspace.env -f compose.workspace.yml build workspace test
+docker compose --env-file .uk-work/workspace.env -f compose.workspace.yml up -d --wait db workspace ingress
 ```
 
-### Environment Setup
+Open [http://127.0.0.1:13022/](http://127.0.0.1:13022/). `/workspace` redirects to `/debts` inside the main app. Create your own username/password using the [stdin-based provisioning instructions](docs/uk/authenticated-foundation.md#local-run-and-provisioning). Existing installations retain their existing login; do not publish credentials or place passwords in command arguments.
 
-Copy the example env file and fill in your values:
+The generator retains existing configuration and writes new secrets only to ignored `.uk-work/workspace.env`. Keep that file private. Docker initializes the active [migration chain](migrations/workspace) **only on a new database volume**. Existing installations need reviewed additive upgrades; restarting does not apply new migrations. Do not run the historical `supabase/schema.sql` as the current UK setup, reset financial volumes, or run `down -v` on data you want to retain. Backup/restore and a versioned upgrade/rollback runner remain release gates.
 
-```bash
-cp .env.example .env.local
+The local app uses a loopback ingress, private Docker networking and non-root application containers. This setup is not an internet deployment recipe. Explicit application mode configuration is required; plain `pnpm dev` alone does not configure the authenticated product.
+
+## Synthetic demo
+
+For a separate sample-data preview:
+
+```sh
+docker compose -f compose.uk.yml build
+docker compose -f compose.uk.yml up -d --wait
 ```
 
-See the [Environment Variables](#environment-variables) section below for details.
+Open [http://localhost:13021/demo](http://localhost:13021/demo). Edits are in memory and reset on reload. Never enter real financial, identity, statement or password data in the demo. It has no personal database or financial connections and does not prove authenticated feature completeness. See [UK setup and boundaries](README.uk.md).
 
-### Database Setup
+## Privacy and unfinished work
 
-1. Create a new Supabase project
-2. Open the SQL Editor in your Supabase dashboard
-3. Paste and run the contents of [`supabase/schema.sql`](supabase/schema.sql)
+PDF handling uses local Poppler text extraction with file/page/time/output limits. It does not provide OCR for scanned statements or universal lender-format support. Missing or ambiguous fields require review/manual entry. Raw documents, full extracted text, holder names and full card numbers are not retained; structured review evidence and file hashes are retained. Preview expiry is not a deletion policy: retention, export and erasure workflows still need implementation.
 
-This creates all required tables, indexes, and default data.
+External AI/Gemini, voice, live stock/FX feeds, push notifications and legacy shared-owner APIs are disabled or blocked in the authenticated build. Do not add model/provider credentials to enable inherited code paths. Open Banking, browser-led Very retrieval and email ingestion are planned independent methods, not working connections.
 
-### Run Development Server
+Recovery, credential rotation, backup/restore rehearsal, migration/rollback tooling, retention and security UX remain adoption gates. Public release additionally needs TLS, production hardening, accessibility/device validation and appropriate UK privacy, consumer and FCA-perimeter review. No FCA authorisation or compliance certification is claimed. Repository publication is not approval to migrate old financial records or deploy publicly. Retained Vercel configuration is historical; connected hosting may react to pushes, but a Git push does not configure a safe production installation.
 
-```bash
-pnpm dev
-```
+## Development and verification
 
-Open [http://localhost:3000](http://localhost:3000) for the main app, or [http://localhost:3000/demo](http://localhost:3000/demo) for demo mode.
+Built with Next.js/React, TypeScript, Tailwind/Radix, PostgreSQL, Recharts and local Poppler. Authentication and finance use separate database roles with owner-scoped transactional commands. The active setup does not use the inherited household PIN or fixed-owner Supabase gateway.
 
-## Environment Variables
+Recorded Docker verification: 106 unit tests, 26 PostgreSQL tests and 15 browser journeys across five layouts passed, plus lint, TypeScript and an offline production build. A final iPhone WebKit navigation flake passed on an unchanged focused rerun. These results cover the delivered slice, not every preserved feature or physical-device/security certification. Read the [full evidence and known limits](docs/uk/main-app-integration.md#final-local-verification) and [independent review](docs/uk/main-app-integration-review.md). Tests use a separate synthetic database; never point them or trace capture at private records.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Your Supabase project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase publishable key used only by protected server routes. |
-| `MONEY_DATA_GATEWAY_SECRET` | Yes | High-entropy server secret enforced by database RLS. Never expose it with a `NEXT_PUBLIC_` prefix. |
-| `SESSION_SECRET` | Yes | Secret for session cookie signing (any random string) |
-| `GEMINI_API_KEY` | For AI | Google Gemini API key for insights, chat, and categorization |
-| `NEXT_PUBLIC_MONEY_PUSH_VAPID_PUBLIC_KEY` | For push | VAPID public key for web push notifications |
-| `MONEY_PUSH_VAPID_PRIVATE_KEY` | For push | VAPID private key for web push notifications |
-| `MONEY_PUSH_VAPID_SUBJECT` | For push | VAPID subject (e.g. `mailto:you@example.com`) |
-| `CRON_SECRET` | For scheduled jobs | Secret to authenticate push reminders and net-worth captures |
-| `NEXT_PUBLIC_ENABLE_ANALYTICS` | No | Set to `true` to enable Vercel Analytics |
-| `NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS` | No | Set to `true` to enable Vercel Speed Insights |
-
-## Demo Mode
-
-Visit `/demo` to explore the full dashboard with realistic sample data — no Supabase connection or API keys needed. Demo mode is read-only and covers every feature: accounts, transactions, stocks, credit cards, subscriptions, goals, reconciliation, reports, and AI insights (with static previews).
-
-## Deployment
-
-### Vercel (Recommended)
-
-1. Push the repo to GitHub
-2. Import the project in [Vercel](https://vercel.com/new)
-3. Add all environment variables in the Vercel project settings
-4. Deploy
-
-The included `vercel.json` configures daily jobs for push reminders at 5 PM UTC and net-worth capture at 4:30 AM UTC. Both require Vercel's `CRON_SECRET` bearer token.
-
-Production financial data is available only through authenticated server routes. Database policies require a high-entropy gateway secret that the client never receives, so the publishable key alone cannot read or change money tables.
-
-### Generate VAPID Keys
-
-If you want push notifications, generate a VAPID key pair:
-
-```bash
-npx web-push generate-vapid-keys
-```
-
-Set the output as `NEXT_PUBLIC_MONEY_PUSH_VAPID_PUBLIC_KEY` and `MONEY_PUSH_VAPID_PRIVATE_KEY`.
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start development server |
-| `pnpm build` | Production build |
-| `pnpm start` | Start production server |
-| `pnpm lint` | Run ESLint |
-| `pnpm format` | Check formatting with Prettier |
-| `pnpm typecheck` | Run TypeScript type checking |
-| `pnpm test` | Run tests with Vitest |
-| `pnpm test:e2e` | Run the read-only demo suite in Chromium, mobile Chromium, Firefox, and WebKit |
+Project guidance is in [claude.md](claude.md). Historical requirements and security findings remain linked from [README.uk.md](README.uk.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE), retaining the original 2025 Amir Shetaia copyright notice. Original source: [NightBaRron1412/money-dashboard](https://github.com/NightBaRron1412/money-dashboard). Dependencies, brands and other assets require their own rights review.

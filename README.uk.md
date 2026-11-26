@@ -1,14 +1,14 @@
 # UK adaptation of Money Dashboard
 
-The selected application base is the user's adaptation repository, https://github.com/nowkillkennys/money-dashboardUK. Original upstream: https://github.com/NightBaRron1412/money-dashboard. Both main branches were verified at `aca1e266ca3610d8f0077191b25563a51b0314cf` on 26 November 2026, with 0/0 commits of divergence. Local work is on `feature/uk-foundation`; nothing has been pushed.
+The selected application base is the user's adaptation repository, https://github.com/nowkillkennys/money-dashboardUK. Original upstream: https://github.com/NightBaRron1412/money-dashboard. The repository is now standalone after the user detached it from the fork network; original upstream attribution and MIT notices remain. The integrated application is on `main`. See the current [main README](README.md) and [integration handover](docs/uk/main-app-integration.md).
 
-This initial reversible slice is an **isolated synthetic UK demo**, not a completed migration or real-data release. The former Debt Tracker and secure-manual implementation remain separate, with their data untouched. Their tested statement import and debt-domain work are migration inputs, not discarded requirements.
+The former Debt Tracker and secure-manual implementation remain separate, with their data untouched. This document retains the isolated synthetic demo setup; it is not the authenticated application's getting-started guide.
 
 Read [product migration plan](docs/uk/product-migration-plan.md), [upstream security review](docs/uk/upstream-security-review.md), [requirements](claude.md) and [executed verification](docs/uk/verification.md).
 
 ## Main application continuation
 
-The user approved the base/interface and continuation. The original main application now runs at http://127.0.0.1:13022/ with username/password authentication, per-user PostgreSQL persistence, native bank/card/transaction commands and integrated debt/PDF review. See [main-app integration](docs/uk/main-app-integration.md) for the connected slice and remaining adapters. See [setup and boundaries](docs/uk/authenticated-foundation.md) and [executed evidence](docs/uk/authenticated-verification.md). No personal credentials are shipped; provisioning reads a chosen password via stdin. The broader demo below remains separate. Bank/card spending integration, backups/recovery, retention and real-data adoption gates remain open.
+The user approved the base/interface and continuation. The original main application now runs at http://127.0.0.1:13022/ with username/password authentication, per-user PostgreSQL persistence, native bank/card/transaction commands and integrated debt/PDF review. See [main-app integration](docs/uk/main-app-integration.md) for the connected slice and remaining adapters. See [setup and boundaries](docs/uk/authenticated-foundation.md) and [executed evidence](docs/uk/authenticated-verification.md). No personal credentials are shipped; provisioning reads a chosen password via stdin. The broader demo below remains separate. Bank/card spending is connected in the current slice; remaining adapters, backups/recovery, retention and real-data adoption gates are detailed in the integration handover.
 
 ## Local preview
 
