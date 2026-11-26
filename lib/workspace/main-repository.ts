@@ -144,6 +144,8 @@ export async function executeMainCommand(
       "idempotency_key",
       "received_amount",
       "refund_of_transaction_id",
+      "allocations",
+      "account_versions",
     ],
     card: [
       "mode",
@@ -177,6 +179,11 @@ export async function executeMainCommand(
     input.action !== "card.payment"
   )
     throw new HttpError(400, "Refund links require a card payment command");
+  if (
+    ("allocations" in input || "account_versions" in input) &&
+    input.action !== "transaction.create"
+  )
+    throw new HttpError(400, "Allocations require a new income entry");
   allowed.reconciliation = reconciliationFields;
   const category = typeof input.action === "string" ? input.action.split(".")[0] : "";
   if (!Object.prototype.hasOwnProperty.call(allowed, category))
@@ -388,6 +395,68 @@ export async function executeMainCommand(
           is_recurring: false,
           recurrence: null,
         });
+      const allocations: Array<{ account_id: string; amount: string }> = [];
+      if ("allocations" in input || "account_versions" in input) {
+        if (
+          action !== "create" ||
+          type !== "income" ||
+          fields.refund_of_transaction_id ||
+          fields.category === "Refund"
+        )
+          throw new HttpError(400, "Allocations require a new ordinary income entry");
+        if (
+          !Array.isArray(input.allocations) ||
+          input.allocations.length > 100 ||
+          !input.account_versions ||
+          typeof input.account_versions !== "object" ||
+          Array.isArray(input.account_versions)
+        )
+          throw new HttpError(400, "Invalid income allocations");
+        const seen = new Set<string>([fields.account_id.toLowerCase()]);
+        const minor = (value: string) => {
+          const [whole, fraction = ""] = value.split(".");
+          return BigInt(whole + fraction.padEnd(2, "0"));
+        };
+        let total = BigInt(0);
+        for (const split of input.allocations) {
+          if (
+            !split ||
+            typeof split !== "object" ||
+            Array.isArray(split) ||
+            Object.keys(split).some((key) => !["account_id", "amount"].includes(key))
+          )
+            throw new HttpError(400, "Invalid income allocation");
+          const target = id(split.account_id).toLowerCase();
+          const amount = money(split.amount);
+          if (seen.has(target) || minor(amount) <= BigInt(0))
+            throw new HttpError(400, "Choose distinct accounts and positive split amounts");
+          seen.add(target);
+          total += minor(amount);
+          allocations.push({ account_id: target, amount });
+        }
+        if (minor(fields.amount) <= BigInt(0) || total > minor(fields.amount))
+          throw new HttpError(400, "Split amounts exceed the income total");
+        if (
+          Object.keys(input.account_versions).length !== seen.size ||
+          Object.keys(input.account_versions).some((key) => !seen.has(key))
+        )
+          throw new HttpError(400, "Supply the observed version of every allocation account");
+        for (const accountId of [...seen].sort()) {
+          const bank = (
+            await c.query("SELECT * FROM money_accounts WHERE user_id=$1 AND id=$2 FOR UPDATE", [
+              owner,
+              accountId,
+            ])
+          ).rows[0];
+          if (!bank || bank.archived || bank.currency !== "GBP")
+            throw new HttpError(400, "Choose available GBP accounts for income allocations");
+          if (
+            !Number.isSafeInteger(input.account_versions[accountId]) ||
+            input.account_versions[accountId] !== bank.version
+          )
+            throw new HttpError(409, "An allocation account changed. Refresh before saving.");
+        }
+      }
       const oldRefundTarget = row?.refund_of_transaction_id;
       if (action === "create") row = await insert(table, { ...fields, id: resourceId });
       else {
@@ -400,6 +469,28 @@ export async function executeMainCommand(
         ).rows[0];
       }
       await bumpRefundTargets(c, owner, oldRefundTarget, fields.refund_of_transaction_id);
+      // Income, all transfers and their receipt commit in the same owner transaction.
+      for (const split of allocations) {
+        await insert(table, {
+          type: "transfer",
+          date: fields.date,
+          amount: split.amount,
+          currency: "GBP",
+          account_id: null,
+          from_account_id: fields.account_id,
+          to_account_id: split.account_id,
+          category: "Allocation",
+          notes: "Split from income",
+          is_recurring: false,
+          recurrence: null,
+        });
+      }
+      if ("allocations" in input) {
+        await c.query(
+          "UPDATE money_accounts SET version=version+1 WHERE user_id=$1 AND id=ANY($2::uuid[])",
+          [owner, [fields.account_id, ...allocations.map((split) => split.account_id)]]
+        );
+      }
     } else if (entity === "card" && action === "update") {
       const fields = {
         name: name(input.name ?? row.name),

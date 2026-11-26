@@ -98,3 +98,7 @@ charge.delete removes one charge and safe linked expense atomically. payment.del
 ## Remaining migration restorations
 
 Linked bank/card refunds, account duplicate reconciliation and daily overview snapshots now use owner-scoped workspace paths. See docs/uk/remaining-restorations.md for semantics and limits; this supersedes older statements that those three paths remain disconnected. Migration 011 adds refund links and updates whole-card removal. Overview snapshot capture skips incomplete valuation and requires loaded-owner/session agreement. Typecheck and production build passed; runtime tests remain paused. Apply 010 and 011 to the retained test database only when tests resume.
+
+## Atomic income allocations
+
+Authenticated income splits now use one transaction.create command with allocations and observed account_versions. Income, transfers and receipt commit together; server validates active owned GBP accounts, exact penny totals and distinct destinations. Refund/update paths cannot carry allocations. No schema changes. Saved templates remain manual prefills. See docs/uk/income-allocation-saving.md. Test pause persists; do not infer runtime verification from build/typecheck.

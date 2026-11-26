@@ -63,6 +63,8 @@ Built with Next.js/React, TypeScript, Tailwind/Radix, PostgreSQL, Recharts and l
 
 Before the requested testing pause, recorded Docker verification for repayment editing: 108 unit tests, 101 PostgreSQL tests and all 55 browser tests passed across five layouts. TypeScript and an offline production build passed; lint has no errors and one existing Credit Cards navigation warning. See [repayment-editing evidence and limits](docs/uk/card-payment-editing.md#verification). These results cover the delivered slice, not every preserved feature or physical-device/security certification. Tests use a separate synthetic database; never point them or trace capture at private records.
 
+Income split saving now commits the income and all selected allocation transfers together; see [allocation saving](docs/uk/income-allocation-saving.md). This change has compilation/build verification only while runtime tests remain paused.
+
 The [remaining disconnected-actions inventory](docs/uk/disconnected-actions.md) distinguishes migration gaps from intentionally disabled providers and features still to build. Test suites are paused until the user requests otherwise; the new goal-contribution, individual history-deletion, linked-refund, duplicate-reconciliation and daily-snapshot restorations have not had runtime testing.
 
 Project guidance is in [claude.md](claude.md). Historical requirements and security findings remain linked from [README.uk.md](README.uk.md).

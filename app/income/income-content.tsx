@@ -1,5 +1,6 @@
 "use client";
 import { TransactionEditDialog, EditField } from "../components/transaction-edit-dialog";
+import { isAuthenticatedMainApp, mainCommand } from "@/lib/workspace/main-client";
 import { validateRefund } from "@/lib/money/refunds";
 import { RefundExpensePicker } from "../components/refund-expense-picker";
 import { monthlyAmount } from "@/lib/money/transaction-filters";
@@ -323,6 +324,7 @@ export function IncomeContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
     setFormError("");
     setSaving(true);
 
@@ -371,9 +373,18 @@ export function IncomeContent() {
             : null;
 
       if (source === "Refund" && !refundId) throw new Error("Choose the expense being refunded.");
-      validateRefund({ refund_of_transaction_id: source === "Refund" ? refundId : null, amount: amt, date, currency: txCurrency }, transactions, creditCardPayments);
-      await createTransaction({
-        type: "income",
+      validateRefund(
+        {
+          refund_of_transaction_id: source === "Refund" ? refundId : null,
+          amount: amt,
+          date,
+          currency: txCurrency,
+        },
+        transactions,
+        creditCardPayments
+      );
+      const income = {
+        type: "income" as const,
         date,
         amount: amt,
         currency: txCurrency,
@@ -387,10 +398,30 @@ export function IncomeContent() {
         recurrence: source !== "Refund" && isRecurring ? recurrence : null,
         refund_of_transaction_id: source === "Refund" ? refundId || null : null,
         exclude_from_monthly: source === "Refund" || excludeFromMonthly,
-      });
+      };
+      const atomicSplit = isAuthenticatedMainApp() && splitEnabled && source !== "Refund";
+      if (atomicSplit) {
+        const allocations = Object.entries(splits)
+          .filter(([target, value]) => target !== accountId && value.trim() !== "")
+          .map(([target, value]) => ({ account_id: target, amount: value.trim() }))
+          .filter((split) => Number(split.amount) !== 0);
+        const accountVersions = Object.fromEntries(
+          [accountId, ...allocations.map((split) => split.account_id)].map((id) => [
+            id,
+            accounts.find((account) => account.id === id)?.version,
+          ])
+        );
+        await mainCommand("transaction.create", {
+          ...income,
+          allocations,
+          account_versions: accountVersions,
+        });
+      } else {
+        await createTransaction(income);
+      }
 
-      // If split is enabled, create transfer transactions
-      if (splitEnabled && source !== "Refund") {
+      // Legacy/demo allocation behavior is retained outside the authenticated app.
+      if (!atomicSplit && splitEnabled && source !== "Refund") {
         for (const [targetId, splitAmt] of Object.entries(splits)) {
           const parsed = parseFloat(splitAmt);
           if (!parsed || parsed <= 0 || targetId === accountId) continue;
@@ -411,7 +442,7 @@ export function IncomeContent() {
         }
       }
 
-      await refresh();
+      // A committed income must not remain resubmittable if the subsequent read fails.
       setShowAdd(false);
       setDate(todayEST());
       setAmount(settings?.paycheck_amount?.toString() || "");
@@ -426,6 +457,11 @@ export function IncomeContent() {
       setIsRecurring(false);
       setRecurrence(defaultPaycheckRecurrence);
       setExcludeFromMonthly(false);
+      try {
+        await refresh();
+      } catch {
+        alert("Income saved. Reload the page to see the updated balances.");
+      }
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to save");
     } finally {
