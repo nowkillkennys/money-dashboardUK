@@ -126,7 +126,8 @@ export function CardRemovalDialog({
               <p className="text-sm">
                 Keep {preview.bankPayments} bank-funded repayments as read-only bank transfer
                 records, preserving your bank balances. Unlink {preview.subscriptions} subscriptions
-                without deleting them.
+                without deleting them. Bank refunds for removed purchases stay in their bank
+                accounts and are unlinked from those purchases.
               </p>
               <p className="text-sm">
                 This cannot be undone. Removing a balance from this app does not settle money owed

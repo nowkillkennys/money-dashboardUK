@@ -238,9 +238,8 @@ export async function createTransaction(
   }
 ) {
   if (isAuthenticatedMainApp()) {
-    const { linked_charge_id, refund_of_transaction_id, refunded_amount, ...input } = tx;
-    if (linked_charge_id || refund_of_transaction_id || refunded_amount)
-      return unavailableMainMutation();
+    const { linked_charge_id, refunded_amount, ...input } = tx;
+    if (linked_charge_id || refunded_amount !== undefined) return unavailableMainMutation();
     return mainCommandRow<Transaction>("transaction.create", input, "transactions");
   }
   if (isDemoModeRoute())
@@ -1609,8 +1608,7 @@ export async function createCreditCardPayment(
   payment: Omit<CreditCardPayment, "id" | "created_at" | "user_id">
 ) {
   if (isAuthenticatedMainApp()) {
-    const { refund_of_transaction_id, ...input } = payment;
-    if (refund_of_transaction_id) return unavailableMainMutation();
+    const input = payment;
     return mainCommandRow<CreditCardPayment>(
       "card.payment",
       { ...input, version: await mainVersion("creditCards", payment.card_id) },
@@ -1649,6 +1647,9 @@ export async function updateCreditCardPayment(
       amount: updates.amount,
       date: updates.date,
       account_id: updates.account_id,
+      ...(updates.refund_of_transaction_id !== undefined
+        ? { refund_of_transaction_id: updates.refund_of_transaction_id }
+        : {}),
     });
   }
   const { amount, ...otherUpdates } = updates;

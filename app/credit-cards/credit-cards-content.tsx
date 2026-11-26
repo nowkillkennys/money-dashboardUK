@@ -938,6 +938,7 @@ export function CreditCardsContent() {
             date: editPayDate,
             amount: editPayAmount,
             account_id: editPayAccountId || null,
+            refund_of_transaction_id: !editPayAccountId ? editPayRefundId || null : null,
           },
           {
             version: snapshot.payment.version,
@@ -1685,6 +1686,13 @@ export function CreditCardsContent() {
                               Other adjustment
                             </span>
                           )}
+                          {payment.refund_of_transaction_id && (
+                            <span className="block text-xs text-accent-blue">
+                              Refund for{" "}
+                              {transactions.find((t) => t.id === payment.refund_of_transaction_id)
+                                ?.merchant || "linked expense"}
+                            </span>
+                          )}
                         </td>
                         <td
                           className="px-4 py-3 text-right font-semibold text-emerald-400"
@@ -1925,7 +1933,7 @@ export function CreditCardsContent() {
             </p>
           </div>
         )}
-        {!authenticatedPaymentEdit && !editPayAccountId && (
+        {!editPayAccountId && (
           <RefundExpensePicker
             required={false}
             transactions={transactions.filter((t) =>

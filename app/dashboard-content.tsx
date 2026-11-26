@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useAuth } from "./auth-provider";
 import { useMoneyData } from "./hooks/use-money-data";
 import { useMoneyFx } from "./hooks/use-money-fx";
 import {
@@ -54,6 +55,7 @@ import {
 } from "@/lib/money/forecasting";
 import { isIncludedInMonthlyTotals, monthlyAmount } from "@/lib/money/transaction-filters";
 import { TakeTourButton } from "./tour/take-tour-button";
+import { londonCivilDate } from "@/lib/money/uk-locale";
 import { computeNetWorthBase } from "@/lib/money/net-worth";
 
 const AUTHENTICATED_APP = process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true";
@@ -282,6 +284,83 @@ export function DashboardContent({
         /* silent — cron will catch up */
       });
   }, [demoMode, loading, fxReady]);
+
+  const { authenticated: snapshotAuthenticated, username: snapshotUsername } = useAuth();
+  const snapshotIdentity = `${snapshotAuthenticated}:${snapshotUsername ?? ""}`;
+  const snapshotIdentityRef = useRef(snapshotIdentity);
+  snapshotIdentityRef.current = snapshotIdentity;
+  const snapshotAttempt = useRef<string | null>(null);
+  const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null);
+  const [snapshotDay, setSnapshotDay] = useState(() => londonCivilDate());
+  useEffect(() => {
+    if (!AUTHENTICATED_APP || demoMode) return;
+    const timer = window.setInterval(() => setSnapshotDay(londonCivilDate()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [demoMode]);
+  useEffect(() => {
+    snapshotAttempt.current = null;
+    setSnapshotNotice(null);
+  }, [snapshotIdentity]);
+  const snapshotOwner = settings?.user_id;
+  useEffect(() => {
+    if (
+      !AUTHENTICATED_APP ||
+      demoMode ||
+      !snapshotAuthenticated ||
+      loading ||
+      error ||
+      !snapshotOwner
+    )
+      return;
+    const attempt = `${snapshotIdentity}:${snapshotOwner}:${snapshotDay}`;
+    if (snapshotAttempt.current === attempt) return;
+    snapshotAttempt.current = attempt;
+    setSnapshotNotice(null);
+    fetch("/api/workspace/snapshots/capture", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_owner_id: snapshotOwner }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Capture failed");
+        const result = await response.json();
+        if (snapshotAttempt.current !== attempt || snapshotIdentityRef.current !== snapshotIdentity)
+          return;
+        if (result.ok) {
+          if (result.snapshot?.user_id !== snapshotOwner) throw new Error("Account changed");
+          setSnapshotNotice(
+            "Daily net worth history captured. The chart updates on your next dashboard load."
+          );
+          return;
+        }
+        const notices: Record<string, string> = {
+          manual_disabled: "Daily net worth history was skipped because manual input is disabled.",
+          incomplete_debt:
+            "Daily net worth history was skipped. Review unresolved debt balances first.",
+          missing_market_values:
+            "Daily net worth history was skipped because current investment prices are unavailable.",
+          unsupported_currency:
+            "Daily net worth history was skipped because some balances use an unsupported currency.",
+        };
+        setSnapshotNotice(
+          notices[result.reason] ?? "Daily net worth history could not be captured."
+        );
+      })
+      .catch(() => {
+        if (snapshotAttempt.current === attempt && snapshotIdentityRef.current === snapshotIdentity)
+          setSnapshotNotice(
+            "Daily net worth history could not be captured. A future dashboard visit will retry."
+          );
+      });
+  }, [
+    demoMode,
+    loading,
+    error,
+    snapshotOwner,
+    snapshotDay,
+    snapshotAuthenticated,
+    snapshotIdentity,
+  ]);
 
   useEffect(() => {
     if (loading || error) return;
@@ -991,6 +1070,11 @@ export function DashboardContent({
         </div>
       )}
 
+      {AUTHENTICATED_APP && snapshotNotice && (
+        <div role="status" className="mb-4 rounded-xl border border-amber-300 p-4">
+          {snapshotNotice}
+        </div>
+      )}
       {AUTHENTICATED_APP && portfolioPricesMissing && (
         <div role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
           Current investment prices are unavailable. Net worth is incomplete; known cash minus debts

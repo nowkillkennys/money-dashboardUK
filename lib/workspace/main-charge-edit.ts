@@ -1,3 +1,4 @@
+import { protectRefundedPurchase } from "./main-refunds";
 import type { PoolClient } from "pg";
 import { HttpError } from "./http";
 
@@ -178,6 +179,12 @@ export async function executeChargeEditCommand(
         fail(400, "Choose an existing goal");
     }
   }
+  if (tx)
+    await protectRefundedPurchase(c, owner, tx.id, {
+      amount: fields.amount,
+      date: fields.date,
+      type: "expense",
+    });
   const financialChanged = (
     await c.query("SELECT $1::numeric <> $2::numeric OR $3::date <> $4::date AS changed", [
       fields.amount,

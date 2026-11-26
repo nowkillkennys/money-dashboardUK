@@ -94,3 +94,7 @@ Add Contribution now uses goal.contribute: one recorded GBP transfer and optiona
 ## Individual card history deletion restoration
 
 charge.delete removes one charge and safe linked expense atomically. payment.delete removes one main repayment, voids its retained statement payment, and restores the original bank outflow through the existing derived balance. Observed versions/manual/owner/receipt guards apply. Migration 010 adds workspace_accounts.review_required: included/unresolved or invalid-estimate deletions return unknown tracked balance until explicit All Debts reconciliation clears the flag and validates inclusion. Anchors/snapshots remain intact. No tests or financial runtime journeys were run under the user pause. Compile/build passed and source review found no concrete P1/P2 issues. See docs/uk/card-history-deletion.md; apply 010 to the retained db-test volume only when tests are explicitly resumed.
+
+## Remaining migration restorations
+
+Linked bank/card refunds, account duplicate reconciliation and daily overview snapshots now use owner-scoped workspace paths. See docs/uk/remaining-restorations.md for semantics and limits; this supersedes older statements that those three paths remain disconnected. Migration 011 adds refund links and updates whole-card removal. Overview snapshot capture skips incomplete valuation and requires loaded-owner/session agreement. Typecheck and production build passed; runtime tests remain paused. Apply 010 and 011 to the retained test database only when tests resume.

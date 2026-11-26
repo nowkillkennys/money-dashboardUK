@@ -1,23 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMoneyData } from "../hooks/use-money-data";
 import { PageHeader, formatMoney, HIDDEN_BALANCE } from "../components/money-ui";
 import { useBalanceVisibility } from "../balance-visibility-provider";
-import {
-  Loader2,
-  Scale,
-  Trash2,
-  Merge,
-  CheckCircle,
-  AlertTriangle,
-} from "lucide-react";
+import { Loader2, Scale, Trash2, Merge, CheckCircle, AlertTriangle } from "lucide-react";
+import { mainCommand, mainVersion } from "@/lib/workspace/main-client";
 import type { CurrencyCode, DuplicateCandidate } from "@/lib/money/database.types";
 
 interface ReconcileResult {
-  session: { id: string };
+  session: { id: string; version: number; expected_balance: string | null };
+  account_version: number;
   computed_balance: number;
   delta: number | null;
+  duplicates: (DuplicateCandidate & { version_a: number; version_b: number })[];
 }
 
 export function ReconcileContent() {
@@ -34,103 +30,86 @@ export function ReconcileContent() {
   const [expectedBalance, setExpectedBalance] = useState("");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<ReconcileResult | null>(null);
-  const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
+  const [duplicates, setDuplicates] = useState<ReconcileResult["duplicates"]>([]);
   const [searched, setSearched] = useState(false);
   const [actionMsg, setActionMsg] = useState("");
 
+  const pendingGuard = useRef(false);
   const acct = accounts.find((a) => a.id === selectedAccount);
   const currency: CurrencyCode = acct?.currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, currency) : HIDDEN_BALANCE);
 
+  const [dupActionRunning, setDupActionRunning] = useState(false);
+  const applyResult = (data: ReconcileResult) => {
+    setResult(data);
+    setDuplicates(data.duplicates);
+    setSearched(true);
+  };
   const handleReconcile = async () => {
-    if (!selectedAccount) return;
+    if (!selectedAccount || pendingGuard.current) return;
+    pendingGuard.current = true;
     setRunning(true);
-    setResult(null);
-    setDuplicates([]);
-    setSearched(false);
     setActionMsg("");
-
     try {
-      const [sessionRes, dupsRes] = await Promise.all([
-        fetch("/api/reconcile", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            account_id: selectedAccount,
-            date_from: dateFrom || null,
-            date_to: dateTo || null,
-            expected_balance: expectedBalance ? parseFloat(expectedBalance) : null,
-          }),
-        }),
-        fetch(
-          `/api/duplicates?${new URLSearchParams({
-            account_id: selectedAccount,
-            ...(dateFrom ? { date_from: dateFrom } : {}),
-            ...(dateTo ? { date_to: dateTo } : {}),
-          })}`
-        ),
-      ]);
-
-      const sessionData = await sessionRes.json();
-      if (!sessionRes.ok) throw new Error(sessionData.error);
-      setResult(sessionData);
-
-      const dupsData = await dupsRes.json();
-      if (dupsRes.ok) {
-        setDuplicates(dupsData.duplicates || []);
-      }
-
-      setSearched(true);
-    } catch (err: unknown) {
+      const response = await mainCommand("reconciliation.start", {
+        account_id: selectedAccount,
+        account_version: await mainVersion("accounts", selectedAccount),
+        date_from: dateFrom,
+        date_to: dateTo,
+        expected_balance: expectedBalance === "" ? null : expectedBalance,
+      });
+      applyResult((response as unknown as { row: ReconcileResult }).row);
+    } catch (err) {
       setActionMsg(err instanceof Error ? err.message : "Reconciliation failed");
-      setSearched(true);
     } finally {
+      pendingGuard.current = false;
       setRunning(false);
     }
   };
-
-  const [dupActionRunning, setDupActionRunning] = useState(false);
-
-  const handleDupAction = async (
-    actionType: "merge" | "delete" | "keep_both",
-    txIds: string[]
-  ) => {
-    if (!result?.session?.id || dupActionRunning) return;
+  const handleDupAction = async (actionType: "merge" | "delete" | "keep_both", txIds: string[]) => {
+    if (!result || pendingGuard.current) return;
+    if (
+      actionType !== "keep_both" &&
+      !window.confirm(
+        actionType === "merge"
+          ? "Keep entry A and permanently delete entry B? Amounts will not be added together. Removing an expense increases the balance; removing income decreases it by B's amount."
+          : "Permanently delete entry B? Removing an expense increases the account balance; removing income decreases it by this amount."
+      )
+    )
+      return;
+    const versions: Record<string, number> = {};
+    for (const id of txIds) {
+      const pair = duplicates.find((d) => d.tx_a_id === id || d.tx_b_id === id);
+      if (!pair) return;
+      versions[id] = pair.tx_a_id === id ? pair.version_a : pair.version_b;
+    }
+    pendingGuard.current = true;
     setDupActionRunning(true);
     setActionMsg("");
     try {
-      const res = await fetch("/api/reconcile/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_id: result.session.id,
-          action_type: actionType,
-          tx_ids: txIds,
-          keep_id: actionType === "merge" ? txIds[0] : undefined,
-          payload_json: { tx_ids: txIds },
-        }),
+      const response = await mainCommand("reconciliation.action", {
+        id: result.session.id,
+        version: result.session.version,
+        account_version: result.account_version,
+        action_type: actionType,
+        tx_ids: txIds,
+        transaction_versions: versions,
+        ...(actionType === "merge" ? { keep_id: txIds[0] } : {}),
+        ...(actionType === "delete" ? { delete_id: txIds[1] } : {}),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      if (actionType === "delete" || actionType === "merge") {
-        setDuplicates((prev) =>
-          prev.filter(
-            (d) => !txIds.includes(d.tx_a_id) && !txIds.includes(d.tx_b_id)
-          )
-        );
-      } else {
-        setDuplicates((prev) =>
-          prev.filter(
-            (d) => !(d.tx_a_id === txIds[0] && d.tx_b_id === txIds[1])
-          )
-        );
-      }
-
+      applyResult((response as unknown as { row: ReconcileResult }).row);
+      // Read a fresh snapshot after the committed command; this GET never mutates.
+      const preview = await fetch(`/api/workspace/reconciliation?session_id=${result.session.id}`, {
+        cache: "no-store",
+      });
+      const data = await preview.json();
+      if (!preview.ok) throw new Error(data.error || "Could not refresh reconciliation");
+      applyResult(data);
       setActionMsg(`Action "${actionType}" applied successfully.`);
-    } catch (err: unknown) {
+    } catch (err) {
       setActionMsg(err instanceof Error ? err.message : "Action failed");
     } finally {
+      pendingGuard.current = false;
       setDupActionRunning(false);
     }
   };
@@ -159,18 +138,23 @@ export function ReconcileContent() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="reconcile-field-1">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="reconcile-field-1"
+              >
                 Account
               </label>
               <select
                 value={selectedAccount}
+                disabled={running || dupActionRunning}
                 onChange={(e) => {
                   setSelectedAccount(e.target.value);
                   setResult(null);
                   setDuplicates([]);
                   setSearched(false);
                 }}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="reconcile-field-1"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="reconcile-field-1"
               >
                 <option value="">Select account...</option>
                 {accounts.map((a) => (
@@ -181,38 +165,68 @@ export function ReconcileContent() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="reconcile-field-2">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="reconcile-field-2"
+              >
                 From
               </label>
               <input
                 type="date"
                 value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="reconcile-field-2"
+                disabled={running || dupActionRunning}
+                onChange={(e) => {
+                  setDateFrom(e.target.value);
+                  setResult(null);
+                  setDuplicates([]);
+                  setSearched(false);
+                }}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="reconcile-field-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="reconcile-field-3">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="reconcile-field-3"
+              >
                 To
               </label>
               <input
                 type="date"
                 value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="reconcile-field-3"
+                disabled={running || dupActionRunning}
+                onChange={(e) => {
+                  setDateTo(e.target.value);
+                  setResult(null);
+                  setDuplicates([]);
+                  setSearched(false);
+                }}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="reconcile-field-3"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="reconcile-field-4">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="reconcile-field-4"
+              >
                 Expected Balance (optional)
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={expectedBalance}
-                onChange={(e) => setExpectedBalance(e.target.value)}
+                disabled={running || dupActionRunning}
+                onChange={(e) => {
+                  setExpectedBalance(e.target.value);
+                  setResult(null);
+                  setDuplicates([]);
+                  setSearched(false);
+                }}
                 placeholder="From bank statement"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="reconcile-field-4"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="reconcile-field-4"
               />
             </div>
           </div>
@@ -220,10 +234,14 @@ export function ReconcileContent() {
           <div className="mt-4">
             <button
               onClick={handleReconcile}
-              disabled={!selectedAccount || running}
+              disabled={!selectedAccount || running || dupActionRunning}
               className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-50"
             >
-              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Scale className="h-4 w-4" />}
+              {running ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Scale className="h-4 w-4" />
+              )}
               Reconcile & Find Duplicates
             </button>
           </div>
@@ -231,9 +249,7 @@ export function ReconcileContent() {
 
         {result && (
           <section className="rounded-2xl border border-border-subtle bg-bg-secondary p-6">
-            <h3 className="mb-3 text-sm font-semibold text-text-primary">
-              Balance Check
-            </h3>
+            <h3 className="mb-3 text-sm font-semibold text-text-primary">Balance Check</h3>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
                 <p className="text-xs text-text-secondary">Computed Balance</p>
@@ -246,7 +262,7 @@ export function ReconcileContent() {
                   <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
                     <p className="text-xs text-text-secondary">Expected Balance</p>
                     <p className="mt-1 text-lg font-bold text-text-primary">
-                      {m(parseFloat(expectedBalance))}
+                      {m(Number(result.session.expected_balance))}
                     </p>
                   </div>
                   <div
@@ -259,9 +275,7 @@ export function ReconcileContent() {
                     <p className="text-xs text-text-secondary">Delta</p>
                     <p
                       className={`mt-1 text-lg font-bold ${
-                        Math.abs(result.delta) < 0.01
-                          ? "text-emerald-400"
-                          : "text-yellow-400"
+                        Math.abs(result.delta) < 0.01 ? "text-emerald-400" : "text-yellow-400"
                       }`}
                     >
                       {Math.abs(result.delta) < 0.01 ? (
@@ -282,10 +296,20 @@ export function ReconcileContent() {
         )}
 
         {actionMsg && (
-          <div className="rounded-xl border border-accent-blue/30 bg-accent-blue/5 px-4 py-3 text-sm text-accent-blue">
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-xl border border-accent-blue/30 bg-accent-blue/5 px-4 py-3 text-sm text-accent-blue"
+          >
             {actionMsg}
           </div>
         )}
+
+        <p className="text-xs text-text-secondary">
+          Balances include all activity through the To date. Duplicate checks use the selected date
+          range and ordinary bank income and expenses; linked card entries, repayments, transfers
+          and refunds are protected.
+        </p>
 
         {duplicates.length > 0 && (
           <section className="rounded-2xl border border-border-subtle bg-bg-secondary p-6">
@@ -294,10 +318,7 @@ export function ReconcileContent() {
             </h3>
             <div className="space-y-3">
               {duplicates.map((dup, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-border-subtle bg-bg-elevated p-4"
-                >
+                <div key={i} className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="space-y-1 text-xs">
                       <p className="font-medium text-text-primary">
@@ -312,30 +333,24 @@ export function ReconcileContent() {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() =>
-                          handleDupAction("merge", [dup.tx_a_id, dup.tx_b_id])
-                        }
-                        disabled={dupActionRunning}
+                        onClick={() => handleDupAction("merge", [dup.tx_a_id, dup.tx_b_id])}
+                        disabled={dupActionRunning || running}
                         className="inline-flex items-center gap-1 rounded-lg bg-accent-purple/10 px-2.5 py-1.5 text-xs font-medium text-accent-purple transition hover:bg-accent-purple/20 disabled:opacity-50"
                         title="Keep first, delete second"
                       >
                         <Merge className="h-3 w-3" /> Merge
                       </button>
                       <button
-                        onClick={() =>
-                          handleDupAction("delete", [dup.tx_b_id])
-                        }
-                        disabled={dupActionRunning}
+                        onClick={() => handleDupAction("delete", [dup.tx_a_id, dup.tx_b_id])}
+                        disabled={dupActionRunning || running}
                         className="inline-flex items-center gap-1 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
                         title="Delete duplicate B"
                       >
                         <Trash2 className="h-3 w-3" /> Delete B
                       </button>
                       <button
-                        onClick={() =>
-                          handleDupAction("keep_both", [dup.tx_a_id, dup.tx_b_id])
-                        }
-                        disabled={dupActionRunning}
+                        onClick={() => handleDupAction("keep_both", [dup.tx_a_id, dup.tx_b_id])}
+                        disabled={dupActionRunning || running}
                         className="inline-flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-bg-secondary disabled:opacity-50"
                         title="Keep both"
                       >

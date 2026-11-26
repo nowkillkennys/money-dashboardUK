@@ -1,3 +1,4 @@
+import { refundId, validateMainRefund, bumpRefundTargets } from "./main-refunds";
 import type { PoolClient } from "pg";
 import { HttpError } from "./http";
 export const paymentEditFields = [
@@ -7,6 +8,7 @@ export const paymentEditFields = [
   "date",
   "account_id",
   "notes",
+  "refund_of_transaction_id",
 ];
 const fail = (status: number, message: string): never => {
   throw new HttpError(status, message);
@@ -165,6 +167,18 @@ export async function executePaymentEditCommand(
       fail(400, "Choose an active GBP bank account");
     if (bank.version !== versions.get(id)) fail(409, "Bank changed. Reload before saving");
   }
+  const target =
+    input.refund_of_transaction_id === undefined
+      ? payment.refund_of_transaction_id
+      : refundId(input.refund_of_transaction_id);
+  await validateMainRefund(c, owner, {
+    id: payment.id,
+    refund_of_transaction_id: target,
+    amount,
+    date,
+    account_id: account,
+    card_id: card.id,
+  });
   const changed = (
     await c.query("SELECT $1::numeric <> $2::numeric OR $3::date <> $4::date AS changed", [
       amount,
@@ -177,8 +191,8 @@ export async function executePaymentEditCommand(
     changed && linked.disposition !== "excluded" ? "unresolved" : linked.disposition;
   const row = (
     await c.query(
-      "UPDATE money_credit_card_payments SET amount=$3,date=$4,account_id=$5,notes=$6,version=version+1 WHERE user_id=$1 AND id=$2 RETURNING *",
-      [owner, payment.id, amount, date, account, notes]
+      "UPDATE money_credit_card_payments SET amount=$3,date=$4,account_id=$5,notes=$6,refund_of_transaction_id=$7,version=version+1 WHERE user_id=$1 AND id=$2 RETURNING *",
+      [owner, payment.id, amount, date, account, notes, target]
     )
   ).rows[0];
   await c.query(
@@ -187,11 +201,21 @@ export async function executePaymentEditCommand(
   );
   const balance = (
     await c.query(
-      `SELECT (a.reported_minor + COALESCE((SELECT sum(amount*100) FROM money_credit_card_charges WHERE card_id=a.id AND statement_disposition='excluded'),0) - COALESCE((SELECT sum(amount_minor) FROM workspace_payments WHERE account_id=a.id AND status='posted' AND disposition='excluded'),0)) BETWEEN 0 AND 9999999999 AS valid FROM workspace_accounts a WHERE a.id=$1`,
+      `SELECT (a.reported_minor + COALESCE((SELECT sum(amount*100) FROM money_credit_card_charges WHERE card_id=a.id AND statement_disposition='excluded'),0) - COALESCE((SELECT sum(amount_minor) FROM workspace_payments WHERE account_id=a.id AND status='posted' AND disposition='excluded'),0)) BETWEEN 0 AND 9999999999 AS valid, (a.reported_minor + COALESCE((SELECT sum(amount*100) FROM money_credit_card_charges WHERE card_id=a.id AND statement_disposition='excluded'),0) - COALESCE((SELECT sum(amount_minor) FROM workspace_payments WHERE account_id=a.id AND status='posted' AND disposition='excluded'),0)) < 0 AS negative FROM workspace_accounts a WHERE a.id=$1`,
       [card.id]
     )
   ).rows[0];
-  if (!balance.valid) fail(400, "Edit exceeds the supported tracked card balance");
+  if (!balance.valid) {
+    if (balance.negative && (target || payment.refund_of_transaction_id)) {
+      await c.query(
+        "UPDATE workspace_accounts SET review_required=true WHERE owner_id=$1 AND id=$2",
+        [owner, card.id]
+      );
+      row.review_required = true;
+      row.tracked_balance = null;
+    } else fail(400, "Edit exceeds the supported tracked card balance");
+  }
+  await bumpRefundTargets(c, owner, payment.refund_of_transaction_id, target);
   for (const id of bankIds)
     await c.query("UPDATE money_accounts SET version=version+1 WHERE user_id=$1 AND id=$2", [
       owner,

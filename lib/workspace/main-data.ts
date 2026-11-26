@@ -55,7 +55,7 @@ export function mainData(owner: string, username: string) {
       for (const [key, table] of Object.entries(mapping)) {
         data[key] = (
           await c.query(
-            `SELECT * FROM ${table} ORDER BY ${key === "accounts" || key === "creditCards" ? "archived,position NULLS LAST," : ""}created_at,id`
+            `SELECT ${key === "transactions" ? "t.*,COALESCE((SELECT sum(r.amount) FROM (SELECT amount FROM money_transactions WHERE user_id=t.user_id AND refund_of_transaction_id=t.id UNION ALL SELECT amount FROM money_credit_card_payments WHERE user_id=t.user_id AND refund_of_transaction_id=t.id) r),0) AS refunded_amount" : "*"} FROM ${table} t ORDER BY ${key === "accounts" || key === "creditCards" ? "archived,position NULLS LAST," : ""}created_at,id`
           )
         ).rows.map(adapt);
       }

@@ -1,3 +1,4 @@
+import { protectRefundedPurchase, bumpRefundTargets } from "./main-refunds";
 import type { PoolClient } from "pg";
 import { HttpError } from "./http";
 
@@ -104,6 +105,7 @@ export async function executeHistoryDeletionCommand(
     ).rows;
     if (reverse.length !== (linked ? 1 : 0) || (linked && reverse[0]?.id !== linked.id))
       fail(409, "Linked expense is inconsistent");
+    if (linked) await protectRefundedPurchase(c, owner, linked.id);
     needsReview ||= record.statement_disposition !== "excluded";
     if (linked) {
       await c.query(
@@ -169,6 +171,7 @@ export async function executeHistoryDeletionCommand(
       linked.id,
     ]);
     await c.query("DELETE FROM money_credit_card_payments WHERE user_id=$1 AND id=$2", [owner, id]);
+    await bumpRefundTargets(c, owner, record.refund_of_transaction_id);
   }
   const balance = (
     await c.query(

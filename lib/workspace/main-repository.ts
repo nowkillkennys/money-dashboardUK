@@ -1,3 +1,10 @@
+import { reconciliationFields, executeReconciliationCommand } from "./main-reconciliation";
+import {
+  refundId,
+  validateMainRefund,
+  protectRefundedPurchase,
+  bumpRefundTargets,
+} from "./main-refunds";
 import { executeHistoryDeletionCommand } from "./main-history-deletion";
 import { goalContributionFields, executeGoalContributionCommand } from "./main-goal-contribution";
 import { paymentEditFields, executePaymentEditCommand } from "./main-payment-edit";
@@ -136,6 +143,7 @@ export async function executeMainCommand(
       "recurrence",
       "idempotency_key",
       "received_amount",
+      "refund_of_transaction_id",
     ],
     card: [
       "mode",
@@ -158,10 +166,18 @@ export async function executeMainCommand(
       "notes",
       "account_id",
       "tx_overrides",
+      "refund_of_transaction_id",
     ],
   };
   if (input.action === "goal.contribute") allowed.goal = goalContributionFields;
   if (input.action === "subscription.pay") allowed.subscription = subscriptionPaymentFields;
+  if (
+    "refund_of_transaction_id" in input &&
+    String(input.action).startsWith("card.") &&
+    input.action !== "card.payment"
+  )
+    throw new HttpError(400, "Refund links require a card payment command");
+  allowed.reconciliation = reconciliationFields;
   const category = typeof input.action === "string" ? input.action.split(".")[0] : "";
   if (!Object.prototype.hasOwnProperty.call(allowed, category))
     throw new HttpError(400, "Unsupported command");
@@ -204,6 +220,7 @@ export async function executeMainCommand(
     if (input.currency && input.currency !== "GBP")
       throw new HttpError(400, "This workspace uses GBP");
     const extension =
+      (await executeReconciliationCommand(c, owner, input)) ??
       (await executeHistoryDeletionCommand(c, owner, input)) ??
       (await executeChargeEditCommand(c, owner, input)) ??
       (await executePaymentEditCommand(c, owner, input)) ??
@@ -308,6 +325,10 @@ export async function executeMainCommand(
         throw new HttpError(400, "Linked card charges require a card command");
       const fields: any = {
         type,
+        refund_of_transaction_id:
+          input.refund_of_transaction_id === undefined
+            ? (row?.refund_of_transaction_id ?? null)
+            : refundId(input.refund_of_transaction_id),
         amount: money(input.amount ?? row?.amount),
         date: date(input.date ?? row?.date?.toISOString?.().slice(0, 10) ?? row?.date),
         currency: "GBP",
@@ -355,6 +376,19 @@ export async function executeMainCommand(
         if (fields.from_account_id === fields.to_account_id)
           throw new HttpError(400, "Choose different accounts");
       } else fields.account_id = id(input.account_id ?? row?.account_id);
+      await protectRefundedPurchase(c, owner, resourceId, fields);
+      await validateMainRefund(c, owner, {
+        ...fields,
+        id: action === "update" ? resourceId : undefined,
+      });
+      if (fields.refund_of_transaction_id)
+        Object.assign(fields, {
+          category: "Refund",
+          exclude_from_monthly: true,
+          is_recurring: false,
+          recurrence: null,
+        });
+      const oldRefundTarget = row?.refund_of_transaction_id;
       if (action === "create") row = await insert(table, { ...fields, id: resourceId });
       else {
         const cols = Object.keys(fields);
@@ -365,6 +399,7 @@ export async function executeMainCommand(
           )
         ).rows[0];
       }
+      await bumpRefundTargets(c, owner, oldRefundTarget, fields.refund_of_transaction_id);
     } else if (entity === "card" && action === "update") {
       const fields = {
         name: name(input.name ?? row.name),
@@ -501,6 +536,14 @@ export async function executeMainCommand(
         } else row = charge;
       } else {
         const paymentId = randomUUID();
+        const target = refundId(input.refund_of_transaction_id);
+        await validateMainRefund(c, owner, {
+          refund_of_transaction_id: target,
+          amount,
+          date: date(input.date),
+          account_id: input.account_id ?? null,
+          card_id: resourceId,
+        });
         if (anchor)
           await c.query(
             "INSERT INTO workspace_payments(id,owner_id,account_id,amount_minor,status,disposition,paid_on) VALUES($1,$2,$3,$4,'posted','excluded',$5)",
@@ -514,7 +557,9 @@ export async function executeMainCommand(
           date: date(input.date),
           notes: input.notes !== undefined ? input.notes : (row?.notes ?? null),
           workspace_payment_id: anchor ? paymentId : null,
+          refund_of_transaction_id: target,
         });
+        await bumpRefundTargets(c, owner, target);
       }
       if (anchor) {
         const balance = (
@@ -523,8 +568,15 @@ export async function executeMainCommand(
             [resourceId]
           )
         ).rows[0];
-        if (Number(balance.minor) < 0)
-          throw new HttpError(400, "Payment exceeds the tracked card balance");
+        if (Number(balance.minor) < 0) {
+          if (action === "payment" && row.refund_of_transaction_id) {
+            await c.query("UPDATE workspace_accounts SET review_required=true WHERE id=$1", [
+              resourceId,
+            ]);
+            row.review_required = true;
+            row.tracked_balance = null;
+          } else throw new HttpError(400, "Payment exceeds the tracked card balance");
+        }
         await c.query("UPDATE workspace_accounts SET version=version+1 WHERE id=$1", [resourceId]);
       }
       await c.query("UPDATE money_credit_cards SET version=version+1 WHERE id=$1", [resourceId]);
@@ -568,7 +620,9 @@ export async function executeMainCommand(
       }
       if (entity === "transaction" && row.linked_charge_id)
         throw new HttpError(400, "Linked charges cannot be deleted independently");
+      if (entity === "transaction") await protectRefundedPurchase(c, owner, resourceId);
       await c.query(`DELETE FROM ${table} WHERE id=$1`, [resourceId]);
+      if (entity === "transaction") await bumpRefundTargets(c, owner, row.refund_of_transaction_id);
       row = { ...row, version: row.version + 1 };
     } else throw new HttpError(400, "Unsupported command");
     const result = { id: row.id, version: row.version, row: plain(row) };
