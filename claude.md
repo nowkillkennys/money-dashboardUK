@@ -1,6 +1,12 @@
 # UK Money Dashboard — accepted direction
 
-The user selected https://github.com/nowkillkennys/money-dashboardUK as the application base on26November2026. Retain https://github.com/NightBaRron1412/money-dashboard as upstream and preserve MIT notices. This decision supersedes the old recommendation to evolve Debt Tracker as the main app. Work locally on the feature branch; do not push/publish/provision without authorization.
+The user selected https://github.com/nowkillkennys/money-dashboardUK as the application base on 26 November 2026. Retain https://github.com/NightBaRron1412/money-dashboard as upstream and preserve MIT notices. This decision supersedes the old recommendation to evolve Debt Tracker as the main app. Work locally on the feature branch; do not push/publish/provision without authorization.
+
+## Approved continuation — 26 November 2026
+
+The user reviewed the UK demo and approved the base/interface and continuation: authentication, per-user isolation and dependency remediation first, followed by tested debt reconciliation and PDF imports. Preserve the approved interface; do not reopen aesthetics. Credit Cards remains a card-specific view within a broader debt grouping. The new authenticated local foundation is separate from the synthetic demo and from the former apps. No real records are migrated automatically.
+
+Current absolute session lifetime is eight hours with server-side revocation. The user proposed easy return after idle with a PIN. Idle/PIN unlock is not implemented: design a server-enforced lock/re-authentication state separately, never a client-only cover or the old household PIN. No external AI credentials or configuration is authorized.
 
 ## Product intent
 

@@ -1,5 +1,7 @@
 # Upstream security, dependency and rights review
 
+**Continuation:** the authenticated workspace now uses a separate provisioned-user/opaque-session/owner-RLS path and blocks legacy APIs. Dependency remediation reports zero audit findings. These historical upstream findings are retained; they do not imply the disabled legacy PIN/data paths were repaired or that the whole product is release-ready. See authenticated-foundation.md, authenticated-verification.md and ownership-design-review.md.
+
 Reviewed source: `NightBaRron1412/money-dashboard`, pinned commit `aca1e266ca3610d8f0077191b25563a51b0314cf`, on 26 November 2026. This is a read-only source review apart from this report. No install, scripts, SQL, cloud services, live finance requests, private environment files or user databases were used. Runtime verification belongs to the separately isolated demo review. Findings below are source evidence, not claims that a deployment has been penetrated or its database policies tested.
 
 Selected destination fork: `https://github.com/nowkillkennys/money-dashboardUK.git`; preserve the original upstream remote/history and MIT notices. The parent implementation task is adding an isolated `UK_DEMO_ONLY` boundary, synthetic quote/FX behavior, local font fallback and restrictive demo CSP. Those follow-on changes are not silently attributed to the pinned upstream source; their runtime/network verification must be recorded separately. They do not resolve the real-data authentication or future multiuser blockers in this report.

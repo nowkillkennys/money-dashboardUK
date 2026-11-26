@@ -1,3 +1,5 @@
+> UK adaptation: read [README.uk.md](README.uk.md) for the separate synthetic demo and authenticated local workspace. An explicit application mode is required; the historical single-household setup below is not the UK authentication path.
+
 # Money Dashboard
 
 A full-featured personal finance tracking dashboard built with Next.js. Track accounts, expenses, income, stock portfolios, credit cards, subscriptions, and savings goals — all in one place. Includes AI-powered insights, voice transaction entry, and a complete demo mode that works without any backend.

@@ -1,0 +1,125 @@
+name: money-dashboard-uk-workspace
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: workspace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/workspace-env first}
+      WORKSPACE_AUTH_PASSWORD: ${WORKSPACE_AUTH_PASSWORD}
+      WORKSPACE_APP_PASSWORD: ${WORKSPACE_APP_PASSWORD}
+    volumes:
+      - workspace-data:/var/lib/postgresql/data
+      - ./migrations/workspace:/docker-entrypoint-initdb.d:ro
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d workspace]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  workspace:
+    image: money-dashboard-uk-workspace-workspace
+    build:
+      context: .
+      dockerfile: Dockerfile.workspace
+      target: workspace
+    environment:
+      WORKSPACE_MODE: authenticated
+      UK_DEMO_ONLY: "false"
+      WORKSPACE_ORIGIN: http://127.0.0.1:13022
+      WORKSPACE_AUTH_DATABASE_URL: ${WORKSPACE_AUTH_DATABASE_URL}
+      WORKSPACE_DATABASE_URL: ${WORKSPACE_DATABASE_URL}
+      TZ: Europe/London
+    networks: [private]
+    read_only: true
+    tmpfs: [/tmp:mode=1777, /app/.next/cache:mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/workspace').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 2g
+    depends_on:
+      db:
+        condition: service_healthy
+  ingress:
+    image: nginx:alpine
+    user: "101:101"
+    ports: [127.0.0.1:13022:8080]
+    volumes: [./scripts/workspace-nginx.conf:/etc/nginx/nginx.conf:ro]
+    networks: [private, edge]
+    read_only: true
+    tmpfs: [/tmp:mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on: [workspace]
+  db-test:
+    profiles: [test]
+    extends:
+      service: db
+    volumes:
+      - workspace-test-data:/var/lib/postgresql/data
+      - ./migrations/workspace:/docker-entrypoint-initdb.d:ro
+  test:
+    image: money-dashboard-uk-workspace-test
+    profiles: [test]
+    build:
+      context: .
+      dockerfile: Dockerfile.workspace
+      target: workspace-test
+    environment:
+      WORKSPACE_MODE: authenticated
+      UK_DEMO_ONLY: "false"
+      WORKSPACE_ORIGIN: http://127.0.0.1:13022
+      WORKSPACE_ADMIN_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db-test:5432/workspace
+      WORKSPACE_AUTH_DATABASE_URL: postgresql://auth_service:${WORKSPACE_AUTH_PASSWORD}@db-test:5432/workspace
+      WORKSPACE_DATABASE_URL: postgresql://workspace_app:${WORKSPACE_APP_PASSWORD}@db-test:5432/workspace
+    networks: [private]
+    depends_on:
+      db-test:
+        condition: service_healthy
+  provision:
+    profiles: [tools]
+    extends:
+      service: test
+    environment:
+      WORKSPACE_ADMIN_DATABASE_URL: ${WORKSPACE_ADMIN_DATABASE_URL}
+  browser-workspace:
+    profiles: [test]
+    extends:
+      service: workspace
+    environment:
+      WORKSPACE_ORIGIN: http://browser-workspace:3000
+      WORKSPACE_AUTH_DATABASE_URL: postgresql://auth_service:${WORKSPACE_AUTH_PASSWORD}@db-test:5432/workspace
+      WORKSPACE_DATABASE_URL: postgresql://workspace_app:${WORKSPACE_APP_PASSWORD}@db-test:5432/workspace
+    depends_on:
+      db-test:
+        condition: service_healthy
+  browser-test:
+    profiles: [test]
+    build:
+      context: .
+      dockerfile: Dockerfile.workspace
+      target: workspace-browser
+    environment:
+      WORKSPACE_ADMIN_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db-test:5432/workspace
+    volumes: [./test-results:/app/test-results]
+    networks: [private]
+    depends_on:
+      browser-workspace:
+        condition: service_healthy
+networks:
+  private:
+    internal: true
+  edge: {}
+volumes:
+  workspace-data: {}
+  workspace-test-data: {}

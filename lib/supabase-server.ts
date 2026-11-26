@@ -15,6 +15,7 @@ import {
  * session-protected data gateway instead of connecting to money tables directly.
  */
 export function getServerSupabase() {
+  if (process.env.WORKSPACE_MODE === "authenticated") throw new Error("Legacy data gateway is disabled");
   const { url, key, gatewaySecret } = getServerDatabaseCredentials();
 
   return createClient(url.toString(), key, {
@@ -295,6 +296,7 @@ export async function verifySessionToken(token: string): Promise<boolean> {
 
 /** Require only the signed session, without an additional database lookup. */
 export async function requireSession(): Promise<NextResponse | null> {
+  if(process.env.WORKSPACE_MODE === "authenticated") return NextResponse.json({error:"Legacy sessions are disabled"},{status:403});
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token || !(await verifySessionToken(token))) {

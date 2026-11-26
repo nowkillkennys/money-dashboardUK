@@ -1,0 +1,29 @@
+# Debt domain extraction
+
+Extracted from the read-only Debt Tracker implementation through `fbf24ee82619bc34c313847f17acfb7dbb5d97cd`, retaining its conservative parsing rules and exact non-negative money boundary. No legacy database, environment, real PDF, credential, private fixture or personal record was read or copied.
+
+## Pure contracts
+
+- `lib/debt/money.ts`: `parseMoneyMinor(string): number` and `formatMoneyDecimal(number): string`. Authoritative non-negative debt amounts use integer pence, maximum £99,999,999.99; canonical output always has two decimals. Signed bank balances require their own boundary.
+- `lib/debt/reconciliation.ts`: `deriveDebtBalance(amount, payments, dispositions): DebtBalance`. Inputs are one account's complete payment set and an explicit classification for every posted/legacy payment. Included payments do not subtract again; excluded payments subtract exactly once; unresolved classification produces null tracked balance. Pending totals remain separate. Duplicate/foreign/pending classifications, missing classifications and negative tracked balances are rejected. No date infers inclusion. Voided payments have no balance effect.
+- `lib/debt/pdfStatement.ts`: `extractCandidates(text)` and `parseStatementText(text)`. The latter returns `parserVersion: debt-text-v1`, labelled candidates and observations, and rejects text exceeding 2 MiB or 50 form-feed-separated pages. Candidate states remain high/missing/ambiguous, with page and matched fixed label provenance. No arbitrary document excerpt is returned. Conservative labelled/column/wrapped-minimum extraction is retained.
+- `lib/debt/statementObservations.ts`: typed simple annual percentage rates remain separate from `current_apr`; estimated next-month interest is `kind: forecast`; non-sterling fees are `kind: conditional`, percent of transaction amount. Neither forecast nor conditional terms become posted charges or total money fees. Masked last-four hints are optional; full PAN and holder names are not retained.
+- `lib/debt/statementReview.ts`: `suggestStatementAccounts(optIn,lastFour,accounts)` returns disabled, unavailable, mismatch, collision or suggestion with matching IDs. Callers supply only authorized accounts. This is a hint requiring explicit confirmation, never account identity or permission to update.
+
+## Server integration requirements
+
+These functions provide decisions, not persistence or authorization. The Next server must derive owner identity, scope/lock account and payment rows, reject stale versions, retain owner-scoped semantic idempotency records, and commit snapshots/dispositions/audit/balance version atomically. Retry with identical semantics must return the prior result before stale-version rejection; a reused key with conflicting semantics must fail. Corrections preserve event history rather than silently deleting evidence. Never use a display-number conversion to write authoritative amounts.
+
+The pure parser expects text already extracted by a bounded local PDF adapter. It does not claim byte/PDF validation, encrypted/image-only PDF support, OCR, extraction timeout, preview expiry, file hashing or duplicate-import persistence. The adapter must enforce 5 MiB PDF bytes, valid header, at most 50 pages, local extraction subprocess timeout/output limits, private temporary files and deletion. Reject encrypted, malformed and image-only inputs explicitly. Do not persist raw document text or log excerpts. Review and confirm explicit account mapping and reconciliation through the same server command path as manual input.
+
+## Verification
+
+Ten synthetic tests cover exact money limits/rejections, inclusion/exclusion/unresolved/pending balance semantics, invalid classifications/overpayment, typed forecast/conditional/simple annual observations, ambiguity/missing/provenance, aligned wrapped labels, optional last-four collision/mismatch and text limits. Docker image `money-dashboard-uk:tests` was used with source copied into `/tmp/debt-work` and existing `/app/node_modules` linked, without installation or cloud calls. Both focused debt suites passed. A full concurrent-work snapshot reported 97 passing tests in 20 suites and one collection failure in `workspace-auth.test.ts` because the other workstream's `lib/workspace/auth` was not yet present; root integration must rerun the final complete suite.
+
+## Follow-on PDF server adapter implemented
+
+`lib/workspace/pdf.ts` and `app/api/workspace/pdf/route.ts` now implement the local adapter requirements above. POST accepts raw `application/pdf`, checks trusted Origin, authenticated session and a persisted per-owner PDF feature flag before reading bytes. Uploads enforce 5 MiB while streaming. Local Poppler uses no shell, five-second subprocess limits, 2 MiB stdout/64 KiB stderr limits, two concurrent extraction slots, 50-page maximum and private temporary files removed in `finally`. Neither PDF bytes nor extracted raw text are persisted or logged. Only hash, versioned parsed observations and preview metadata enter owner-scoped RLS transactions.
+
+Previews expire after 30 minutes. The same owner's SHA-256 hash returns its unexpired preview; expired unconfirmed previews renew; confirmed duplicates reject. A unique owner/hash upsert handles parallel preview insertion, and a persisted flag recheck under a shared row lock protects the insertion transaction. Confirmation remains the ledger's atomic reconciliation responsibility.
+
+Four Docker workspace tests passed using the isolated synthetic database and newly built Poppler-equipped workspace-test image: genuine synthetic PDF extraction; malformed, oversize and image-only rejection; raw streaming/MIME bounds; owner-scoped hash reuse, owner separation, expiry renewal, confirmed-duplicate rejection and disabled flag rejection. Fixtures are generated entirely from invented ASCII text. No real document was needed.

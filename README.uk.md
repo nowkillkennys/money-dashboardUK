@@ -6,6 +6,10 @@ This initial reversible slice is an **isolated synthetic UK demo**, not a comple
 
 Read [product migration plan](docs/uk/product-migration-plan.md), [upstream security review](docs/uk/upstream-security-review.md), [requirements](claude.md) and [executed verification](docs/uk/verification.md).
 
+## Authenticated continuation
+
+The user approved the base/interface and continuation. A separate local username/password debt workspace now runs at http://127.0.0.1:13022/workspace, with per-user PostgreSQL isolation, reported/tracked reconciliation and local PDF review. See [setup and boundaries](docs/uk/authenticated-foundation.md) and [executed evidence](docs/uk/authenticated-verification.md). No personal credentials are shipped; provisioning reads a chosen password via stdin. The broader demo below remains separate. Bank/card spending integration, backups/recovery, retention and real-data adoption gates remain open.
+
 ## Local preview
 
 ```sh

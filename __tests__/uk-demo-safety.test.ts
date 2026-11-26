@@ -1,8 +1,15 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {NextRequest} from 'next/server';
 import {proxy} from '../proxy';
-afterEach(()=>{delete process.env.UK_DEMO_ONLY;vi.restoreAllMocks();});
+afterEach(()=>{delete process.env.UK_DEMO_ONLY;delete process.env.WORKSPACE_MODE;vi.restoreAllMocks();});
 describe('isolated UK evaluation boundary',()=>{
+ it('fails closed without a mode and denies legacy access in authenticated mode',()=>{
+  delete process.env.UK_DEMO_ONLY;delete process.env.WORKSPACE_MODE;
+  expect(proxy(new NextRequest('http://localhost/api/session')).status).toBe(503);
+  process.env.WORKSPACE_MODE='authenticated';
+  for(const path of ['/api/session','/api/set-pin','/api/data/rest/v1/accounts','/api/ai/chat','/sw.js','/_next/image'])expect(proxy(new NextRequest('http://localhost'+path)).status).toBe(403);
+  expect(proxy(new NextRequest('http://localhost/api/workspace/accounts')).headers.get('x-middleware-next')).toBe('1');
+ });
  it('blocks financial, AI, auth and notification endpoints without calling providers',()=>{
   process.env.UK_DEMO_ONLY='true';const fetch=vi.spyOn(globalThis,'fetch');
   for(const path of ['/api/data/rest/v1/accounts','/api/ai/demo-chat','/api/ai/demo-voice','/api/set-pin','/api/push/cron','/api/session'])
