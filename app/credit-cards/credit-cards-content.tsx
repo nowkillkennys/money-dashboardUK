@@ -1,4 +1,5 @@
 "use client";
+import { CardRemovalDialog } from "./card-removal-dialog";
 import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { TransactionEditDialog, EditField } from "../components/transaction-edit-dialog";
 import { validateRefund } from "@/lib/money/refunds";
@@ -160,6 +161,8 @@ export function CreditCardsContent() {
   const [actionMessage, setActionMessage] = useState("");
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [removingCard, setRemovingCard] = useState<CreditCard | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [orderedCards, setOrderedCards] = useState<CreditCard[]>([]);
   useEffect(() => {
     setOrderedCards(creditCards);
@@ -525,6 +528,10 @@ export function CreditCardsContent() {
 
   const handleDeleteCard = async (card: CreditCard) => {
     if (deletingCardId || reordering) return;
+    if (isAuthenticatedMainApp()) {
+      setRemovingCard(card);
+      return;
+    }
     const msg = isAuthenticatedMainApp()
       ? `Delete "${card.name}"? Only unused cards with no balance or financial history can be deleted. Archive cards you want to keep for your records.`
       : `Delete "${card.name}" and its data?`;
@@ -906,6 +913,34 @@ export function CreditCardsContent() {
         />
       </div>
 
+      {isAuthenticatedMainApp() && (
+        <label className="mb-4 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          Show archived
+        </label>
+      )}
+      {isAuthenticatedMainApp() &&
+        !showArchived &&
+        creditCards.length > 0 &&
+        creditCards.every((c) => c.archived) && (
+          <p className="my-4">
+            All cards are archived. Select Show archived to view or restore them.
+          </p>
+        )}
+      <CardRemovalDialog
+        card={removingCard}
+        onClose={() => setRemovingCard(null)}
+        onDone={async (message) => {
+          await refresh();
+          setActionError("");
+          setRestrictedCard(null);
+          setActionMessage(message);
+        }}
+      />
       {/* Cards grid */}
       {creditCards.length === 0 ? (
         <EmptyState
@@ -925,152 +960,182 @@ export function CreditCardsContent() {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedCards.map((c) => c.id)} strategy={rectSortingStrategy}>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {orderedCards.map((card) => {
-                const bal = cardBalances[card.id] || 0;
-                const linkedAcct = accounts.find((a) => a.id === card.linked_account_id);
-                const utilization = card.credit_limit > 0 ? (bal / card.credit_limit) * 100 : 0;
-                const isHighUtil = utilization > 75;
-                const colorClasses = cardColorClasses(card.color, {
-                  icon: "bg-accent-purple/10 text-accent-purple",
-                  bar: "bg-accent-purple",
-                });
-                return (
-                  <SortableCard key={card.id} id={card.id}>
-                    {({ renderHandle }) => (
-                      <div
-                        className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${card.archived ? "opacity-60" : ""}`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClasses.icon}`}
-                            >
-                              <CreditCardIcon className="h-5 w-5" />
+              {orderedCards
+                .filter((card) => !isAuthenticatedMainApp() || showArchived || !card.archived)
+                .map((card) => {
+                  const bal = cardBalances[card.id] || 0;
+                  const linkedAcct = accounts.find((a) => a.id === card.linked_account_id);
+                  const utilization = card.credit_limit > 0 ? (bal / card.credit_limit) * 100 : 0;
+                  const isHighUtil = utilization > 75;
+                  const colorClasses = cardColorClasses(card.color, {
+                    icon: "bg-accent-purple/10 text-accent-purple",
+                    bar: "bg-accent-purple",
+                  });
+                  return (
+                    <SortableCard key={card.id} id={card.id}>
+                      {({ renderHandle }) => (
+                        <div
+                          className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${card.archived ? "opacity-60" : ""}`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClasses.icon}`}
+                              >
+                                <CreditCardIcon className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-semibold text-text-primary">
+                                  {card.name}
+                                  {card.archived && (
+                                    <span className="ml-2 rounded bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
+                                      Archived
+                                    </span>
+                                  )}
+                                </h3>
+                                <p className="text-xs text-text-secondary">
+                                  {card.currency}
+                                  {linkedAcct
+                                    ? ` • Linked: ${linkedAcct.name}`
+                                    : " • No linked account"}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <h3 className="text-sm font-semibold text-text-primary">
-                                {card.name}
-                                {card.archived && (
-                                  <span className="ml-2 rounded bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
-                                    Archived
-                                  </span>
-                                )}
-                              </h3>
-                              <p className="text-xs text-text-secondary">
-                                {card.currency}
-                                {linkedAcct
-                                  ? ` • Linked: ${linkedAcct.name}`
-                                  : " • No linked account"}
-                              </p>
+                            <div className="flex items-center gap-1">
+                              {renderHandle()}
+                              {isAuthenticatedMainApp() && card.archived && (
+                                <button
+                                  aria-label="Restore card"
+                                  disabled={!!deletingCardId || reordering}
+                                  className="text-sm underline"
+                                  onClick={async () => {
+                                    setDeletingCardId(card.id);
+                                    setActionError("");
+                                    try {
+                                      await updateCreditCard(
+                                        card.id,
+                                        { archived: false },
+                                        card.version
+                                      );
+                                      await refresh();
+                                      setActionMessage(`Restored "${card.name}".`);
+                                    } catch (e) {
+                                      setActionError(
+                                        e instanceof Error ? e.message : "Unable to restore card."
+                                      );
+                                    } finally {
+                                      setDeletingCardId(null);
+                                    }
+                                  }}
+                                >
+                                  Restore card
+                                </button>
+                              )}
+                              <button
+                                onClick={() => openEditCard(card)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                                aria-label="Edit"
+                                title="Edit"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCard(card)}
+                                disabled={!!deletingCardId || reordering}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                                aria-label="Delete"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1">
-                            {renderHandle()}
-                            <button
-                              onClick={() => openEditCard(card)}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                              aria-label="Edit"
-                              title="Edit"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteCard(card)}
-                              disabled={!!deletingCardId || reordering}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                              aria-label="Delete"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
 
-                        <div className="mt-4">
-                          <div className="flex items-baseline justify-between">
-                            <p className="text-2xl font-bold text-text-primary">
-                              {card.reconciliation_needed
-                                ? "Review needed"
-                                : showBalances
-                                  ? formatMoney(bal, card.currency)
-                                  : HIDDEN_BALANCE}
-                            </p>
+                          <div className="mt-4">
+                            <div className="flex items-baseline justify-between">
+                              <p className="text-2xl font-bold text-text-primary">
+                                {card.reconciliation_needed
+                                  ? "Review needed"
+                                  : showBalances
+                                    ? formatMoney(bal, card.currency)
+                                    : HIDDEN_BALANCE}
+                              </p>
+                              {card.credit_limit > 0 && (
+                                <span className="text-xs text-text-secondary">
+                                  /{" "}
+                                  {showBalances
+                                    ? formatMoney(card.credit_limit, card.currency)
+                                    : HIDDEN_BALANCE}
+                                </span>
+                              )}
+                            </div>
                             {card.credit_limit > 0 && (
-                              <span className="text-xs text-text-secondary">
-                                /{" "}
-                                {showBalances
-                                  ? formatMoney(card.credit_limit, card.currency)
-                                  : HIDDEN_BALANCE}
-                              </span>
+                              <div className="mt-2">
+                                <div className="h-1.5 w-full rounded-full bg-bg-elevated">
+                                  <div
+                                    className={`h-1.5 rounded-full transition-all ${
+                                      isHighUtil ? "bg-red-500" : colorClasses.bar
+                                    }`}
+                                    style={{
+                                      width: `${Math.min(utilization, 100)}%`,
+                                    }}
+                                  />
+                                </div>
+                                <div className="mt-1 flex items-center justify-between">
+                                  <span className="text-[10px] text-text-secondary">
+                                    {utilization.toFixed(0)}% utilized
+                                  </span>
+                                  {isHighUtil && (
+                                    <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                                      <AlertTriangle className="h-2.5 w-2.5" /> High
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             )}
                           </div>
-                          {card.credit_limit > 0 && (
-                            <div className="mt-2">
-                              <div className="h-1.5 w-full rounded-full bg-bg-elevated">
-                                <div
-                                  className={`h-1.5 rounded-full transition-all ${
-                                    isHighUtil ? "bg-red-500" : colorClasses.bar
-                                  }`}
-                                  style={{
-                                    width: `${Math.min(utilization, 100)}%`,
-                                  }}
-                                />
-                              </div>
-                              <div className="mt-1 flex items-center justify-between">
-                                <span className="text-[10px] text-text-secondary">
-                                  {utilization.toFixed(0)}% utilized
-                                </span>
-                                {isHighUtil && (
-                                  <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-                                    <AlertTriangle className="h-2.5 w-2.5" /> High
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
 
-                        <div className="mt-4 flex gap-2">
-                          <button
-                            onClick={() => openPayModal(card.id)}
-                            disabled={bal <= 0}
-                            className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <DollarSign className="mr-1 inline h-3 w-3" />
-                            Pay
-                          </button>
-                          <button
-                            onClick={() => {
-                              setChargeCardId(card.id);
-                              setShowAddCharge(true);
-                            }}
-                            className="flex-1 rounded-xl bg-accent-purple px-3 py-2 text-xs font-medium text-white transition hover:bg-accent-purple/80"
-                          >
-                            <ShoppingCart className="mr-1 inline h-3 w-3" />
-                            Charge
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true") {
-                                window.location.assign("/debts");
-                                return;
-                              }
-                              setCcCorrectionCardId(card.id);
-                              setCcCorrectionAmount(bal.toFixed(2));
-                              setCcCorrectionShowInExpenses(false);
-                              setShowCCCorrection(true);
-                            }}
-                            className="rounded-xl border border-border-subtle px-3 py-2 text-xs font-medium text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
-                          >
-                            <Scale className="mr-1 inline h-3 w-3" />
-                            Correct
-                          </button>
+                          <div className="mt-4 flex gap-2">
+                            <button
+                              onClick={() => openPayModal(card.id)}
+                              disabled={bal <= 0}
+                              className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <DollarSign className="mr-1 inline h-3 w-3" />
+                              Pay
+                            </button>
+                            <button
+                              onClick={() => {
+                                setChargeCardId(card.id);
+                                setShowAddCharge(true);
+                              }}
+                              className="flex-1 rounded-xl bg-accent-purple px-3 py-2 text-xs font-medium text-white transition hover:bg-accent-purple/80"
+                            >
+                              <ShoppingCart className="mr-1 inline h-3 w-3" />
+                              Charge
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true") {
+                                  window.location.assign("/debts");
+                                  return;
+                                }
+                                setCcCorrectionCardId(card.id);
+                                setCcCorrectionAmount(bal.toFixed(2));
+                                setCcCorrectionShowInExpenses(false);
+                                setShowCCCorrection(true);
+                              }}
+                              className="rounded-xl border border-border-subtle px-3 py-2 text-xs font-medium text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
+                            >
+                              <Scale className="mr-1 inline h-3 w-3" />
+                              Correct
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </SortableCard>
-                );
-              })}
+                      )}
+                    </SortableCard>
+                  );
+                })}
             </div>
           </SortableContext>
         </DndContext>

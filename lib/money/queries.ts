@@ -1212,12 +1212,13 @@ export async function createCreditCard(
 
 export async function updateCreditCard(
   id: string,
-  updates: Partial<Omit<CreditCard, "id" | "created_at" | "user_id">>
+  updates: Partial<Omit<CreditCard, "id" | "created_at" | "user_id">>,
+  observedVersion?: number
 ) {
   if (isAuthenticatedMainApp())
     return mainCommandRow<CreditCard>(
       "card.update",
-      { id, ...updates, version: await mainVersion("creditCards", id) },
+      { id, ...updates, version: observedVersion ?? (await mainVersion("creditCards", id)) },
       "creditCards"
     );
   if (isDemoModeRoute()) return demoUpdateCreditCard(id, updates);
@@ -1231,11 +1232,67 @@ export async function updateCreditCard(
   return data as CreditCard;
 }
 
-export async function deleteCreditCard(id: string, version?: number) {
+export interface CardRemovalPreview {
+  id: string;
+  version: number;
+  previewToken: string;
+  name: string;
+  trackedBalance: string | null;
+  reconciliationNeeded: boolean;
+  charges: number;
+  linkedExpenses: number;
+  payments: number;
+  bankPayments: number;
+  snapshots: number;
+  pdfImports: number;
+  subscriptions: number;
+}
+
+export async function getCardRemovalPreview(id: string): Promise<CardRemovalPreview> {
+  const response = await fetch(`/api/workspace/card-removal?id=${encodeURIComponent(id)}`, {
+    cache: "no-store",
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || "Unable to load card removal details.");
+  const counts = [
+    "charges",
+    "linkedExpenses",
+    "payments",
+    "bankPayments",
+    "snapshots",
+    "pdfImports",
+    "subscriptions",
+  ];
+  if (
+    body.id !== id ||
+    !Number.isInteger(body.version) ||
+    typeof body.previewToken !== "string" ||
+    !body.previewToken ||
+    typeof body.name !== "string" ||
+    (body.trackedBalance !== null &&
+      (typeof body.trackedBalance !== "string" || !/^\d+\.\d{2}$/.test(body.trackedBalance))) ||
+    typeof body.reconciliationNeeded !== "boolean" ||
+    counts.some((key) => !Number.isInteger(body[key]) || body[key] < 0)
+  ) {
+    throw new Error("Card removal details are incomplete. Reload the preview before continuing.");
+  }
+  return body as CardRemovalPreview;
+}
+
+export async function deleteCreditCard(
+  id: string,
+  version?: number,
+  permanent?: {
+    mode: "permanent";
+    confirmation_name: string;
+    preview_token: string;
+  }
+) {
   if (isAuthenticatedMainApp()) {
     return mainCommand("card.delete", {
       id,
       version: version ?? (await mainVersion("creditCards", id)),
+      ...permanent,
     });
   }
   if (isDemoModeRoute()) {

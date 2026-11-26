@@ -39,6 +39,7 @@ export interface Account {
 export type RecurrenceFrequency = "weekly" | "bi-weekly" | "monthly" | "yearly";
 
 export interface Transaction {
+  preserved_card_payment?: boolean;
   version?: number;
   id: string;
   user_id: string;

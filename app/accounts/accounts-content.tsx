@@ -854,9 +854,15 @@ export function AccountsContent() {
                           {
                             <span
                               className="block max-w-[130px] truncate"
-                              title={accountName(tx.to_account_id)}
+                              title={
+                                tx.preserved_card_payment
+                                  ? tx.merchant || "Removed card"
+                                  : accountName(tx.to_account_id)
+                              }
                             >
-                              {accountName(tx.to_account_id)}
+                              {tx.preserved_card_payment
+                                ? "Removed card"
+                                : accountName(tx.to_account_id)}
                             </span>
                           }
                         </td>
@@ -896,25 +902,36 @@ export function AccountsContent() {
                         <td className="px-3 py-3 text-right sm:px-4">
                           {
                             <span className="inline-flex gap-1">
-                              <button
-                                aria-label="Edit transfer"
-                                onClick={() => startEditTransfer(tx)}
-                                className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={async () => {
-                                  if (!confirm("Delete this transfer?")) return;
-                                  await deleteTransaction(tx.id);
-                                  await refresh();
-                                }}
-                                className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                                aria-label="Delete"
-                                title="Delete"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {tx.preserved_card_payment ? (
+                                <span
+                                  className="text-xs text-text-secondary"
+                                  title="Bank payment retained after card deletion. This record cannot be edited or deleted."
+                                >
+                                  Preserved payment · Read only
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    aria-label="Edit transfer"
+                                    onClick={() => startEditTransfer(tx)}
+                                    className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      if (!confirm("Delete this transfer?")) return;
+                                      await deleteTransaction(tx.id);
+                                      await refresh();
+                                    }}
+                                    className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                                    aria-label="Delete"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
+                              )}
                             </span>
                           }
                         </td>

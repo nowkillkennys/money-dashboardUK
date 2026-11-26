@@ -128,6 +128,9 @@ export async function executeMainCommand(
       "received_amount",
     ],
     card: [
+      "mode",
+      "confirmation_name",
+      "preview_token",
       "name",
       "credit_limit",
       "linked_account_id",
@@ -166,6 +169,11 @@ export async function executeMainCommand(
     )
   )
     throw new HttpError(400, "Server-owned field");
+  if (
+    input.action !== "card.delete" &&
+    ["mode", "confirmation_name", "preview_token"].some((field) => field in input)
+  )
+    throw new HttpError(400, "Removal fields require a card delete command");
   id(key);
   const fingerprint = createHash("sha256").update(canonical(input)).digest("hex");
   return withUserDb(owner, async (c) => {
@@ -220,6 +228,12 @@ export async function executeMainCommand(
       if (input.version !== row.version)
         throw new HttpError(409, "Record changed. Reload before saving");
     }
+    if (
+      entity === "transaction" &&
+      row?.preserved_card_payment &&
+      ["update", "delete"].includes(action)
+    )
+      throw new HttpError(409, "Preserved card payment records cannot be edited or deleted");
     async function insert(t: string, fields: Record<string, any>) {
       const f = { id: randomUUID(), user_id: owner, ...fields };
       const cols = Object.keys(f);
@@ -500,9 +514,27 @@ export async function executeMainCommand(
       // The same workspace identity is an explicit statement anchor; canonical charge/payment rows are the live ledger.
       row.version = Number(input.version) + 1;
     } else if (action === "delete" && entity === "card") {
-      if (Object.keys(input).some((k) => !["action", "id", "version"].includes(k)))
+      const permanent = input.mode === "permanent";
+      const fields = permanent
+        ? ["action", "id", "version", "mode", "confirmation_name", "preview_token"]
+        : ["action", "id", "version"];
+      if (Object.keys(input).some((k) => !fields.includes(k)))
         throw new HttpError(400, "Delete accepts only the card identifier and version");
-      row = await deleteMainCard(c, owner, row);
+      if (
+        permanent &&
+        (typeof input.confirmation_name !== "string" ||
+          typeof input.preview_token !== "string" ||
+          !/^[a-f0-9]{64}$/.test(input.preview_token))
+      )
+        throw new HttpError(400, "A current preview and exact card name are required");
+      row = await deleteMainCard(
+        c,
+        owner,
+        row,
+        permanent
+          ? { confirmation_name: input.confirmation_name, preview_token: input.preview_token }
+          : undefined
+      );
     } else if (action === "delete" && entity !== "card") {
       if (entity === "bank") {
         const references = (

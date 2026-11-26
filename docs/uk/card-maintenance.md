@@ -1,5 +1,7 @@
 # Card deletion and saved ordering
 
+The subsequent [card removal choices](card-removal-choices.md) update supersedes the unused-card-only UI policy below. The safe command remains available for backward compatibility.
+
 26 November 2026. Changes apply to the authenticated main app on port 13022.
 
 ## Cause and behavior
