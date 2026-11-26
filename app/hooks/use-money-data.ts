@@ -33,6 +33,7 @@ import {
   getCreditCardPayments,
   computeAccountBalance,
 } from "@/lib/money/queries";
+import { getMainData } from "@/lib/workspace/main-client";
 import { getDemoStore } from "@/lib/money/demo-store";
 
 export interface MoneyData {
@@ -50,6 +51,8 @@ export interface MoneyData {
   creditCardPayments: CreditCardPayment[];
   netWorthSnapshots: NetWorthSnapshot[];
   balances: Record<string, number>;
+  otherDebtTotal: number;
+  unresolvedDebtCount: number;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -71,6 +74,9 @@ export function useMoneyData(options?: { demoMode?: boolean }): MoneyData {
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [creditCardCharges, setCreditCardCharges] = useState<CreditCardCharge[]>([]);
   const [creditCardPayments, setCreditCardPayments] = useState<CreditCardPayment[]>([]);
+  const [otherDebtTotal, setOtherDebtTotal] = useState(0);
+  const [unresolvedDebtCount, setUnresolvedDebtCount] = useState(0);
+  const [serverBalances, setServerBalances] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,21 +102,43 @@ export function useMoneyData(options?: { demoMode?: boolean }): MoneyData {
         return;
       }
 
-      const [a, t, g, ga, p, s, h, sub, div, cc, ccCharges, ccPayments, snapshots] = await Promise.all([
-        getAccounts(),
-        getTransactions(),
-        getGoals(),
-        getGoalAccounts(),
-        getAllocationPlans(),
-        getSettings(),
-        getHoldings(),
-        getSubscriptions(),
-        getDividends(),
-        getCreditCards(),
-        getCreditCardCharges(),
-        getCreditCardPayments(),
-        getNetWorthSnapshots(),
-      ]);
+      if (process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true") {
+        const data = await getMainData();
+        setAccounts(data.accounts);
+        setTransactions(data.transactions);
+        setGoals(data.goals);
+        setGoalAccounts(data.goalAccounts);
+        setPlans(data.plans);
+        setSettings(data.settings);
+        setHoldings(data.holdings);
+        setSubscriptions(data.subscriptions);
+        setDividends(data.dividends);
+        setCreditCards(data.creditCards);
+        setCreditCardCharges(data.creditCardCharges);
+        setCreditCardPayments(data.creditCardPayments);
+        setNetWorthSnapshots(data.netWorthSnapshots);
+        setServerBalances(data.balances);
+        setOtherDebtTotal(data.otherDebtTotal ?? 0);
+        setUnresolvedDebtCount(data.unresolvedDebtCount ?? 0);
+        return;
+      }
+
+      const [a, t, g, ga, p, s, h, sub, div, cc, ccCharges, ccPayments, snapshots] =
+        await Promise.all([
+          getAccounts(),
+          getTransactions(),
+          getGoals(),
+          getGoalAccounts(),
+          getAllocationPlans(),
+          getSettings(),
+          getHoldings(),
+          getSubscriptions(),
+          getDividends(),
+          getCreditCards(),
+          getCreditCardCharges(),
+          getCreditCardPayments(),
+          getNetWorthSnapshots(),
+        ]);
       setAccounts(a);
       setTransactions(t);
       setGoals(g);
@@ -137,8 +165,13 @@ export function useMoneyData(options?: { demoMode?: boolean }): MoneyData {
 
   // Compute balances from transactions (includes CC payments deducted from accounts)
   const balances: Record<string, number> = {};
-  for (const acct of accounts) {
-    balances[acct.id] = computeAccountBalance(acct.id, transactions, acct.starting_balance ?? 0, creditCardPayments);
+  for (const acct of serverBalances === null ? accounts : []) {
+    balances[acct.id] = computeAccountBalance(
+      acct.id,
+      transactions,
+      acct.starting_balance ?? 0,
+      creditCardPayments
+    );
   }
 
   return {
@@ -155,7 +188,9 @@ export function useMoneyData(options?: { demoMode?: boolean }): MoneyData {
     creditCardCharges,
     creditCardPayments,
     netWorthSnapshots,
-    balances,
+    balances: serverBalances ?? balances,
+    otherDebtTotal,
+    unresolvedDebtCount,
     loading,
     error,
     refresh,

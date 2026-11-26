@@ -52,6 +52,8 @@ test.beforeAll(async () => {
   ]);
 });
 test.afterAll(async () => {
+  await admin.query("DELETE FROM money_command_journal WHERE user_id=$1", [owner]);
+  await admin.query("DELETE FROM money_command_receipts WHERE user_id=$1", [owner]);
   for (const table of [
     "workspace_snapshots",
     "workspace_command_receipts",
@@ -84,20 +86,23 @@ test("authenticated debt create, payment, reload and explicit reconciliation", a
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Your debts" })).toBeVisible();
   await page.getByText("Add debt account", { exact: true }).click();
-  await page.getByLabel("Account name").fill("Synthetic card");
+  await page.getByLabel("Account name").fill("Synthetic loan");
+  await page.getByRole("combobox", { name: /Debt type/ }).selectOption("loan");
   await page.getByLabel("Reported balance (£)", { exact: true }).fill("500.00");
   await page.getByRole("button", { name: "Add account", exact: true }).click();
-  await page.getByRole("button", { name: /Synthetic card/ }).click();
-  await page.getByText("Record a payment", { exact: true }).click();
+  await page.getByRole("button", { name: /Synthetic loan/ }).click();
+  await page.getByText("Record a debt-only payment", { exact: true }).click();
   await page.getByLabel("Payment (£)", { exact: true }).fill("50.00");
   await page.getByRole("button", { name: "Record payment", exact: true }).click();
   await expect(page.getByText("£450.00").first()).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your debts" })).toBeVisible();
-  await page.getByRole("button", { name: /Synthetic card/ }).click();
+  await page.getByRole("button", { name: /Synthetic loan/ }).click();
   await page.getByLabel("New reported balance (£)").fill("450.00");
   await page.getByRole("combobox", { name: /Inclusion/ }).selectOption("included");
-  await page.getByText("I reviewed the balance, date, account and payment inclusion.").click();
+  await page
+    .getByText("I reviewed the balance, date, account, payment and charge inclusion.")
+    .click();
   await page.getByRole("button", { name: "Confirm reviewed balance" }).click();
   await expect(page.getByText("£450.00").first()).toBeVisible();
   await expect
@@ -121,10 +126,12 @@ test("authenticated debt create, payment, reload and explicit reconciliation", a
   await expect(page.getByText("PDF preview · not saved to this account")).toBeVisible();
   await page.getByRole("combobox", { name: /Inclusion/ }).selectOption("included");
   await page
-    .getByRole("checkbox", { name: "I reviewed the balance, date, account and payment inclusion." })
+    .getByRole("checkbox", {
+      name: "I reviewed the balance, date, account, payment and charge inclusion.",
+    })
     .check();
   await page.getByRole("button", { name: "Confirm reviewed balance" }).click();
-  await expect(page.getByRole("button", { name: /Synthetic card/ })).toContainText("£425.00");
+  await expect(page.getByRole("button", { name: /Synthetic loan/ })).toContainText("£425.00");
   await expect
     .poll(
       async () =>

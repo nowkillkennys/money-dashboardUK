@@ -4,6 +4,7 @@ import { useAuth } from "../auth-provider";
 import { LoginForm } from "../login-form";
 import { MoneyAuthProvider } from "../auth-provider";
 import { BalanceVisibilityProvider } from "../balance-visibility-provider";
+import { MainCommandRetry } from "./main-command-retry";
 import { MoneyToolbar } from "./money-toolbar";
 import { MoneySidebar } from "./money-sidebar";
 import { VoiceTransaction } from "./voice-transaction";
@@ -22,10 +23,23 @@ function NotConfigured() {
         </div>
         <h1 className="text-xl font-bold text-text-primary">Supabase Not Configured</h1>
         <p className="mt-2 text-sm text-text-secondary">
-          Add <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">NEXT_PUBLIC_SUPABASE_URL</code> to your{" "}
-          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">.env.local</code> file, plus server-only{" "}
-          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">SUPABASE_PUBLISHABLE_KEY</code> and{" "}
-          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">MONEY_DATA_GATEWAY_SECRET</code> values, to enable the finance dashboard.
+          Add{" "}
+          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">
+            NEXT_PUBLIC_SUPABASE_URL
+          </code>{" "}
+          to your{" "}
+          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">
+            .env.local
+          </code>{" "}
+          file, plus server-only{" "}
+          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">
+            SUPABASE_PUBLISHABLE_KEY
+          </code>{" "}
+          and{" "}
+          <code className="rounded bg-bg-elevated px-1.5 py-0.5 text-xs font-mono text-accent-blue">
+            MONEY_DATA_GATEWAY_SECRET
+          </code>{" "}
+          values, to enable the finance dashboard.
         </p>
       </div>
     </div>
@@ -34,7 +48,11 @@ function NotConfigured() {
 
 function VoiceTransactionOverlay({ demoMode }: { demoMode: boolean }) {
   const { accounts, creditCards, settings, refresh } = useMoneyData({ demoMode });
-  if (process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true") return null;
+  if (
+    process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true" ||
+    process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true"
+  )
+    return null;
   return (
     <VoiceTransaction
       accounts={accounts}
@@ -55,14 +73,18 @@ function AuthGateInner({
   demoMode?: boolean;
   routeBase?: string;
 }) {
-  const { authenticated, loading, configured } = useAuth();
+  const { authenticated, loading, configured, username, credentialsMode } = useAuth();
   const [sidebarCollapsed, updateSidebarCollapsed] = useState(false);
   useEffect(() => {
-    try { updateSidebarCollapsed(localStorage.getItem("money-sidebar-collapsed") === "true"); } catch {}
+    try {
+      updateSidebarCollapsed(localStorage.getItem("money-sidebar-collapsed") === "true");
+    } catch {}
   }, []);
   const setSidebarCollapsed = (value: boolean) => {
     updateSidebarCollapsed(value);
-    try { localStorage.setItem("money-sidebar-collapsed", String(value)); } catch {}
+    try {
+      localStorage.setItem("money-sidebar-collapsed", String(value));
+    } catch {}
   };
 
   if (!demoMode && !configured) {
@@ -89,13 +111,44 @@ function AuthGateInner({
         demoMode={demoMode}
         routeBase={routeBase}
       />
-      <main className={cn("min-h-screen transition-all duration-200", sidebarCollapsed ? "md:ml-20" : "md:ml-64")}>
-        {demoMode && process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true" && (<div role="note" className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-xs text-slate-800">UK adaptation preview · Synthetic data only · Changes reset on reload · External services and AI disabled · Existing records have not been migrated</div>)}
-        <a href="#main-content" className="money-skip-link">Skip to content</a>
+      <main
+        className={cn(
+          "min-h-screen transition-all duration-200",
+          sidebarCollapsed ? "md:ml-20" : "md:ml-64"
+        )}
+      >
+        {demoMode && process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true" && (
+          <div
+            role="note"
+            className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-center text-xs text-slate-800"
+          >
+            UK adaptation preview · Synthetic data only · Changes reset on reload · External
+            services and AI disabled · Existing records have not been migrated
+          </div>
+        )}
+        {credentialsMode && (
+          <div
+            role="note"
+            className="border-b border-border-subtle bg-bg-elevated px-4 py-2 text-center text-xs text-text-secondary"
+          >
+            Signed in as {username} · Private local data · AI, voice and external connections
+            disabled
+          </div>
+        )}
+        <a href="#main-content" className="money-skip-link">
+          Skip to content
+        </a>
         <div className="mx-auto max-w-[1400px] px-4 sm:px-8 lg:px-10 xl:px-12">
-          <MoneyToolbar routeBase={routeBase} demoMode={demoMode}><VoiceTransactionOverlay demoMode={demoMode} /></MoneyToolbar>
+          <MoneyToolbar routeBase={routeBase} demoMode={demoMode}>
+            <VoiceTransactionOverlay demoMode={demoMode} />
+          </MoneyToolbar>
         </div>
-        <div id="main-content" tabIndex={-1} className="money-content mx-auto max-w-[1400px] px-4 pt-5 pb-28 sm:px-8 lg:px-10 lg:pt-7 xl:px-12 md:pb-10">
+        <div
+          id="main-content"
+          tabIndex={-1}
+          className="money-content mx-auto max-w-[1400px] px-4 pt-5 pb-28 sm:px-8 lg:px-10 lg:pt-7 xl:px-12 md:pb-10"
+        >
+          {credentialsMode && <MainCommandRetry />}
           {children}
         </div>
       </main>

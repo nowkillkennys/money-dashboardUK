@@ -1,4 +1,7 @@
-import { Pool, type PoolClient } from "pg";
+import { Pool, types, type PoolClient } from "pg";
+
+// PostgreSQL DATE is a civil day, never a timezone-shifted JavaScript instant.
+types.setTypeParser(1082, (value) => value);
 
 let auth: Pool | undefined;
 let ledger: Pool | undefined;
@@ -22,13 +25,14 @@ export function workspaceDb() {
 }
 export async function withUserDb<T>(
   userId: string,
-  operation: (client: PoolClient) => Promise<T>
+  operation: (client: PoolClient) => Promise<T>,
+  readOnly = false
 ): Promise<T> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId))
     throw new Error("Invalid authenticated user");
   const client = await workspaceDb().connect();
   try {
-    await client.query("BEGIN");
+    await client.query(readOnly ? "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY" : "BEGIN");
     await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
     const result = await operation(client);
     await client.query("COMMIT");

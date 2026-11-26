@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------------ */
 /*  Auto-generated-style type definitions for the Supabase schema     */
-/*  Keep in sync with supabase/schema.sql                             */
+/*  Keep in sync with migrations/workspace (upstream schema reference: supabase/schema.sql)                             */
 /* ------------------------------------------------------------------ */
 
 export type AccountType = "checking" | "investing";
@@ -23,6 +23,7 @@ export type GreetingTone = string;
 /* ---------- Row types ---------- */
 
 export interface Account {
+  version?:number;
   id: string;
   user_id: string;
   name: string;
@@ -187,6 +188,9 @@ export interface PushSubscriptionRecord {
 }
 
 export interface CreditCard {
+  version?:number;
+  tracked_balance?:string|null;
+  reconciliation_needed?:boolean;
   id: string;
   user_id: string;
   name: string;

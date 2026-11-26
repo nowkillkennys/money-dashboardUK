@@ -143,7 +143,7 @@ export function AccountsContent() {
     setLedgerAccountId(accountId);
     setLedgerLoading(true);
     try {
-      const res = await fetch(`/api/running-balance?account_id=${accountId}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" ? "/api/workspace/running-balance" : "/api/running-balance"}?account_id=${accountId}`);
       const data = await res.json();
       if (res.ok) {
         setLedgerTxs(data.transactions || []);
@@ -579,7 +579,7 @@ export function AccountsContent() {
                     const pendingCC = creditCards
                       .filter((c) => c.linked_account_id === acct.id)
                       .reduce((sum, c) => {
-                        const ccBal = computeCreditCardBalance(c.id, creditCardCharges, creditCardPayments);
+                        const ccBal = computeCreditCardBalance(c.id, creditCardCharges, creditCardPayments,c);
                         return sum + (ccBal > 0 ? ccBal : 0);
                       }, 0);
                     const afterCC = bal - pendingCC;

@@ -46,10 +46,18 @@ function canonical(value: unknown): string {
     );
   return JSON.stringify(value);
 }
-async function accounts(client: PoolClient) {
+export async function readDebtAccounts(client: PoolClient) {
   const rows = (
     await client.query(
       "SELECT id,name,kind,reported_minor,as_of::text,version FROM workspace_accounts ORDER BY name,id"
+    )
+  ).rows;
+  const links = (
+    await client.query("SELECT card_id,workspace_account_id FROM money_workspace_cards")
+  ).rows;
+  const charges = (
+    await client.query(
+      "SELECT id,card_id,amount::text,date::text,statement_disposition AS disposition FROM money_credit_card_charges ORDER BY date,id"
     )
   ).rows;
   const snapshots = (
@@ -72,17 +80,28 @@ async function accounts(client: PoolClient) {
         disposition: p.disposition,
         paidOn: p.paid_on,
       }));
+    const cs = charges.filter((c) => c.card_id === a.id);
+    const excludedCharges = cs
+      .filter((c) => c.disposition === "excluded")
+      .reduce((sum, c) => sum + parseMoneyMinor(c.amount), 0);
+    const derived = deriveDebtBalance(
+      formatMoneyDecimal(Number(a.reported_minor) + excludedCharges),
+      ps,
+      ps
+        .filter((p) => p.status === "posted")
+        .map((p) => ({ paymentId: p.id, disposition: p.disposition }))
+    );
+    const unknownCharge = cs.some((c) => c.disposition === "unresolved");
     return {
       ...a,
       reported_minor: undefined,
       asOf: a.as_of,
-      ...deriveDebtBalance(
-        formatMoneyDecimal(Number(a.reported_minor)),
-        ps,
-        ps
-          .filter((p) => p.status === "posted")
-          .map((p) => ({ paymentId: p.id, disposition: p.disposition }))
-      ),
+      ...derived,
+      reportedBalance: formatMoneyDecimal(Number(a.reported_minor)),
+      trackedBalance: unknownCharge ? null : derived.trackedBalance,
+      reconciliationNeeded: unknownCharge || derived.reconciliationNeeded,
+      charges: cs,
+      mainCardLinked: links.some((link) => link.workspace_account_id === a.id),
       payments: ps,
       snapshots: snapshots
         .filter((s) => s.account_id === a.id)
@@ -95,7 +114,7 @@ async function accounts(client: PoolClient) {
   });
 }
 export function listAccounts(owner: string) {
-  return withUserDb(owner, accounts);
+  return withUserDb(owner, readDebtAccounts);
 }
 export async function executeCommand(
   owner: string,
@@ -103,6 +122,29 @@ export async function executeCommand(
   input: Record<string, unknown>
 ): Promise<{ id: string }> {
   id(key);
+  if (input.action === "create" && input.kind === "credit_card") {
+    keys(input, ["action", "name", "kind", "amount", "asOf"]);
+    const { executeMainCommand } = await import("./main-repository");
+    const result = await executeMainCommand(owner, key, {
+      action: "card.create",
+      name: input.name,
+      currency: "GBP",
+      credit_limit: "0",
+      starting_balance: input.amount,
+      as_of: input.asOf,
+    });
+    return { id: result.id };
+  }
+  if (input.action === "link_card") {
+    keys(input, ["action", "accountId", "version"]);
+    const { executeMainCommand } = await import("./main-repository");
+    const result = await executeMainCommand(owner, key, {
+      action: "card.adopt",
+      id: input.accountId,
+      version: input.version,
+    });
+    return { id: result.id };
+  }
   const fingerprint = createHash("sha256").update(canonical(input)).digest("hex");
   return withUserDb(owner, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [owner + key]);
@@ -150,6 +192,17 @@ export async function executeCommand(
       if (!row) throw new HttpError(404, "Account not found");
       if (!Number.isInteger(input.version) || input.version !== row.version)
         throw new HttpError(409, "This account changed. Reload and review before saving");
+      const mapped = (
+        await client.query(
+          "SELECT card_id FROM money_workspace_cards WHERE workspace_account_id=$1",
+          [accountId]
+        )
+      ).rows[0];
+      if (mapped && input.action === "payment")
+        throw new HttpError(
+          400,
+          "Record card repayments from Credit Cards and choose their bank source"
+        );
       if (input.action === "payment") {
         keys(input, ["action", "accountId", "version", "amount", "status", "paidOn"]);
         const minor = amount(input.amount);
@@ -161,10 +214,26 @@ export async function executeCommand(
         );
       } else if (input.action === "void") {
         keys(input, ["action", "accountId", "version", "paymentId"]);
+        if (mapped) {
+          const previous = (
+            await client.query(
+              "SELECT disposition FROM workspace_payments WHERE id=$1 AND account_id=$2",
+              [id(input.paymentId), accountId]
+            )
+          ).rows[0];
+          if (previous?.disposition === "included")
+            throw new HttpError(
+              409,
+              "This payment is included in a reported statement. Review a corrected statement before voiding it"
+            );
+        }
         const r = await client.query(
           "UPDATE workspace_payments SET status='voided' WHERE id=$1 AND account_id=$2 AND status!='voided'",
           [id(input.paymentId), accountId]
         );
+        await client.query("DELETE FROM money_credit_card_payments WHERE workspace_payment_id=$1", [
+          id(input.paymentId),
+        ]);
         if (r.rowCount !== 1) throw new HttpError(404, "Active payment not found");
       } else if (input.action === "reconcile") {
         keys(input, [
@@ -174,6 +243,7 @@ export async function executeCommand(
           "amount",
           "asOf",
           "dispositions",
+          "chargeDispositions",
           "previewId",
         ]);
         if (!Array.isArray(input.dispositions) || input.dispositions.length > 10000)
@@ -207,6 +277,30 @@ export async function executeCommand(
           )
         )
           throw new HttpError(400, "Classify every posted payment exactly once");
+        const charges = (
+          await client.query(
+            "SELECT id FROM money_credit_card_charges WHERE card_id=$1 FOR UPDATE",
+            [accountId]
+          )
+        ).rows;
+        const chargeDecisions = input.chargeDispositions ?? [];
+        if (
+          !Array.isArray(chargeDecisions) ||
+          chargeDecisions.length !== charges.length ||
+          new Set(chargeDecisions.map((d) => d?.chargeId)).size !== charges.length ||
+          chargeDecisions.some(
+            (d) =>
+              !d ||
+              !charges.some((c) => c.id === d.chargeId) ||
+              !["included", "excluded", "unresolved"].includes(d.disposition)
+          )
+        )
+          throw new HttpError(400, "Classify every card charge exactly once");
+        for (const decision of chargeDecisions)
+          await client.query(
+            "UPDATE money_credit_card_charges SET statement_disposition=$1 WHERE id=$2",
+            [decision.disposition, decision.chargeId]
+          );
         const minor = amount(input.amount);
         const asOf = date(input.asOf);
         await client.query("UPDATE workspace_accounts SET reported_minor=$1,as_of=$2 WHERE id=$3", [
@@ -242,8 +336,12 @@ export async function executeCommand(
       await client.query("UPDATE workspace_accounts SET version=version+1 WHERE id=$1", [
         accountId,
       ]);
+      if (mapped)
+        await client.query("UPDATE money_credit_cards SET version=version+1 WHERE id=$1", [
+          mapped.card_id,
+        ]);
       try {
-        await accounts(client);
+        await readDebtAccounts(client);
       } catch {
         throw new HttpError(400, "Payment classifications would make the balance invalid");
       }

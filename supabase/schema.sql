@@ -1,3 +1,8 @@
+-- Upstream schema reference preserved for original feature relationships.
+-- The UK main app uses migrations/workspace/001..007 to adapt these same
+-- money_* tables for local per-user PostgreSQL and statement extensions.
+-- Do not run this historical fixed-owner definition on the UK application DB.
+
 -- ================================================================
 -- Personal Finance Dashboard – Complete Supabase Schema
 -- This file is the canonical, standalone database definition.

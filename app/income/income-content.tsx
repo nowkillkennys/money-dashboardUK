@@ -233,7 +233,7 @@ export function IncomeContent() {
 
   const fetchRunningBalance = useCallback(async (accountId: string) => {
     try {
-      const res = await fetch(`/api/running-balance?account_id=${accountId}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" ? "/api/workspace/running-balance" : "/api/running-balance"}?account_id=${accountId}`);
       if (!res.ok) { setRunningBalances({}); return; }
       const data = await res.json();
       const map: Record<string, number> = {};

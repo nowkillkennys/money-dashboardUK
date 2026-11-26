@@ -106,15 +106,20 @@ export function CreditCardsContent() {
     refresh,
   } = useMoneyData();
   const merchantHistory = useMemo(() => {
-    const linkedChargeIds = new Set(transactions.map(t => t.linked_charge_id).filter(Boolean));
-    const transactionIds = new Set(transactions.map(t => t.id));
-    return [...transactions.filter(t => t.type === "expense"), ...creditCardCharges.filter(charge => !linkedChargeIds.has(charge.id) && !transactionIds.has(charge.linked_transaction_id || ""))];
+    const linkedChargeIds = new Set(transactions.map((t) => t.linked_charge_id).filter(Boolean));
+    const transactionIds = new Set(transactions.map((t) => t.id));
+    return [
+      ...transactions.filter((t) => t.type === "expense"),
+      ...creditCardCharges.filter(
+        (charge) =>
+          !linkedChargeIds.has(charge.id) && !transactionIds.has(charge.linked_transaction_id || "")
+      ),
+    ];
   }, [transactions, creditCardCharges]);
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
-  const m = (v: number) =>
-    showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
+  const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
 
   const categories = useMemo(() => {
     const loaded = normalizeCategories(settings?.expense_categories ?? []);
@@ -144,7 +149,9 @@ export function CreditCardsContent() {
   const [editCardArchived, setEditCardArchived] = useState(false);
   const [editCardError, setEditCardError] = useState("");
   const [orderedCards, setOrderedCards] = useState<CreditCard[]>([]);
-  useEffect(() => { setOrderedCards(creditCards); }, [creditCards]);
+  useEffect(() => {
+    setOrderedCards(creditCards);
+  }, [creditCards]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -158,10 +165,7 @@ export function CreditCardsContent() {
     try {
       const activeIds = next.filter((c) => !c.archived).map((c) => c.id);
       const archivedIds = next.filter((c) => c.archived).map((c) => c.id);
-      await Promise.all([
-        reorderCreditCards(activeIds),
-        reorderCreditCards(archivedIds),
-      ]);
+      await Promise.all([reorderCreditCards(activeIds), reorderCreditCards(archivedIds)]);
     } catch {
       await refresh();
     }
@@ -187,23 +191,32 @@ export function CreditCardsContent() {
   const [chargeError, setChargeError] = useState("");
   const [autoCategorizePending, setAutoCategorizePending] = useState(false);
 
-  const autoCategorize = useCallback(async (merchantName: string, notesText?: string) => {
-    if (!merchantName.trim() && !(notesText?.trim())) return;
-    if ((merchantName + (notesText || "")).trim().length < 2) return;
-    setAutoCategorizePending(true);
-    try {
-      const res = await fetch("/api/ai/categorize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchant: merchantName.trim(), notes: notesText?.trim() || undefined, categories }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.category) setChargeCategory(data.category);
-    } catch { /* silent */ } finally {
-      setAutoCategorizePending(false);
-    }
-  }, [categories]);
+  const autoCategorize = useCallback(
+    async (merchantName: string, notesText?: string) => {
+      if (!merchantName.trim() && !notesText?.trim()) return;
+      if ((merchantName + (notesText || "")).trim().length < 2) return;
+      setAutoCategorizePending(true);
+      try {
+        const res = await fetch("/api/ai/categorize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            merchant: merchantName.trim(),
+            notes: notesText?.trim() || undefined,
+            categories,
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.category) setChargeCategory(data.category);
+      } catch {
+        /* silent */
+      } finally {
+        setAutoCategorizePending(false);
+      }
+    },
+    [categories]
+  );
 
   // Inline edit charge state
   const [editingChargeId, setEditingChargeId] = useState<string | null>(null);
@@ -272,11 +285,7 @@ export function CreditCardsContent() {
   const cardBalances = useMemo(() => {
     const map: Record<string, number> = {};
     for (const card of creditCards) {
-      map[card.id] = computeCreditCardBalance(
-        card.id,
-        creditCardCharges,
-        creditCardPayments
-      );
+      map[card.id] = computeCreditCardBalance(card.id, creditCardCharges, creditCardPayments, card);
     }
     return map;
   }, [creditCards, creditCardCharges, creditCardPayments]);
@@ -285,12 +294,7 @@ export function CreditCardsContent() {
     () =>
       creditCards.reduce((sum, card) => {
         const bal = cardBalances[card.id] || 0;
-        return (
-          sum +
-          (bal > 0
-            ? convertCurrency(bal, card.currency, baseCurrency, fx)
-            : 0)
-        );
+        return sum + (bal > 0 ? convertCurrency(bal, card.currency, baseCurrency, fx) : 0);
       }, 0),
     [creditCards, cardBalances, baseCurrency, fx]
   );
@@ -354,7 +358,10 @@ export function CreditCardsContent() {
       let cmp = 0;
       switch (sortKey) {
         case "date":
-          cmp = a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);
+          cmp =
+            a.date.localeCompare(b.date) ||
+            a.created_at.localeCompare(b.created_at) ||
+            a.id.localeCompare(b.id);
           break;
         case "amount":
           cmp = a.amount - b.amount;
@@ -381,7 +388,12 @@ export function CreditCardsContent() {
     for (const p of creditCardPayments.filter((py) => py.card_id === filterChargeCard)) {
       events.push({ date: p.date, created_at: p.created_at, id: p.id, signed: -p.amount });
     }
-    events.sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    events.sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.created_at.localeCompare(b.created_at) ||
+        a.id.localeCompare(b.id)
+    );
     const map: Record<string, number> = {};
     let bal = 0;
     for (const e of events) {
@@ -403,7 +415,12 @@ export function CreditCardsContent() {
     for (const p of creditCardPayments.filter((py) => py.card_id === filterPayCard)) {
       events.push({ date: p.date, created_at: p.created_at, id: p.id, signed: -p.amount });
     }
-    events.sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    events.sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        a.created_at.localeCompare(b.created_at) ||
+        a.id.localeCompare(b.id)
+    );
     const map: Record<string, number> = {};
     let bal = 0;
     for (const e of events) {
@@ -482,9 +499,7 @@ export function CreditCardsContent() {
   };
 
   const handleDeleteCard = async (id: string, name: string) => {
-    const chargeCount = creditCardCharges.filter(
-      (c) => c.card_id === id
-    ).length;
+    const chargeCount = creditCardCharges.filter((c) => c.card_id === id).length;
     const msg = chargeCount
       ? `"${name}" has ${chargeCount} charge(s). Delete card and all its data?`
       : `Delete "${name}"?`;
@@ -518,7 +533,14 @@ export function CreditCardsContent() {
           category: chargeCategory,
           notes: chargeNotes || null,
         },
-        { currency: chargeCurrency, cardName: card?.name ?? "Credit Card", goal_id: chargeGoalId || null, exclude_from_monthly: chargeExcluded, personal_share_percent: sharePercent, shared_with: sharedWith.trim() || null }
+        {
+          currency: chargeCurrency,
+          cardName: card?.name ?? "Credit Card",
+          goal_id: chargeGoalId || null,
+          exclude_from_monthly: chargeExcluded,
+          personal_share_percent: sharePercent,
+          shared_with: sharedWith.trim() || null,
+        }
       );
       await refresh();
       setShowAddCharge(false);
@@ -544,7 +566,9 @@ export function CreditCardsContent() {
 
   const startEditCharge = (charge: CreditCardCharge) => {
     setEditingChargeId(charge.id);
-    const linked = transactions.find(t => t.id === charge.linked_transaction_id || t.linked_charge_id === charge.id);
+    const linked = transactions.find(
+      (t) => t.id === charge.linked_transaction_id || t.linked_charge_id === charge.id
+    );
     setEditChargeExcluded(linked?.exclude_from_monthly ?? false);
     setEditChargeGoalId(linked?.goal_id || "");
     setEditSharePercent(linked?.personal_share_percent ?? 100);
@@ -568,8 +592,18 @@ export function CreditCardsContent() {
         category: editChargeCategory,
         notes: editChargeNotes || null,
       });
-      const linked = transactions.find(t => t.linked_charge_id === id || t.id === creditCardCharges.find(c => c.id === id)?.linked_transaction_id);
-      if (linked) await updateTransaction(linked.id, { goal_id: editChargeGoalId || null, exclude_from_monthly: editChargeExcluded, personal_share_percent: editSharePercent, shared_with: editSharedWith.trim() || null });
+      const linked = transactions.find(
+        (t) =>
+          t.linked_charge_id === id ||
+          t.id === creditCardCharges.find((c) => c.id === id)?.linked_transaction_id
+      );
+      if (linked)
+        await updateTransaction(linked.id, {
+          goal_id: editChargeGoalId || null,
+          exclude_from_monthly: editChargeExcluded,
+          personal_share_percent: editSharePercent,
+          shared_with: editSharedWith.trim() || null,
+        });
       await refresh();
       setEditingChargeId(null);
     } finally {
@@ -609,14 +643,29 @@ export function CreditCardsContent() {
     }
     setSaving(true);
     try {
-      validateRefund({ refund_of_transaction_id: paySource === "credit" ? payRefundId : null, amount: amt, date: payDate, card_id: payCardId }, transactions, creditCardPayments, creditCardCharges);
+      validateRefund(
+        {
+          refund_of_transaction_id: paySource === "credit" ? payRefundId : null,
+          amount: amt,
+          date: payDate,
+          card_id: payCardId,
+        },
+        transactions,
+        creditCardPayments,
+        creditCardCharges
+      );
       await createCreditCardPayment({
         card_id: payCardId,
         account_id: paySource === "account" ? payAccountId : null,
         date: payDate,
         amount: amt,
         refund_of_transaction_id: paySource === "credit" ? payRefundId || null : null,
-        notes: paySource === "cashback" ? "Cashback redemption" : paySource === "credit" ? "Credit / Refund" : null,
+        notes:
+          paySource === "cashback"
+            ? "Cashback redemption"
+            : paySource === "credit"
+              ? "Credit / Refund"
+              : null,
       });
       await refresh();
       setShowPay(false);
@@ -641,21 +690,45 @@ export function CreditCardsContent() {
     if (isNaN(target) || target < 0) return;
     const current = cardBalances[card.id] || 0;
     const diff = Math.round((target - current) * 100) / 100;
-    if (diff === 0) { setShowCCCorrection(false); return; }
+    if (diff === 0) {
+      setShowCCCorrection(false);
+      return;
+    }
 
     setSaving(true);
     try {
       if (diff > 0) {
         if (ccCorrectionShowInExpenses) {
           await createLinkedCreditCardCharge(
-            { card_id: card.id, date: todayEST(), amount: Math.abs(diff), merchant: null, category: "Other", notes: "Balance correction" },
+            {
+              card_id: card.id,
+              date: todayEST(),
+              amount: Math.abs(diff),
+              merchant: null,
+              category: "Other",
+              notes: "Balance correction",
+            },
             { currency: card.currency, cardName: card.name }
           );
         } else {
-          await createCreditCardCharge({ card_id: card.id, date: todayEST(), amount: Math.abs(diff), merchant: null, category: null, notes: "Balance correction", linked_transaction_id: null });
+          await createCreditCardCharge({
+            card_id: card.id,
+            date: todayEST(),
+            amount: Math.abs(diff),
+            merchant: null,
+            category: null,
+            notes: "Balance correction",
+            linked_transaction_id: null,
+          });
         }
       } else {
-        await createCreditCardPayment({ card_id: card.id, account_id: null, date: todayEST(), amount: Math.abs(diff), notes: "Balance correction" });
+        await createCreditCardPayment({
+          card_id: card.id,
+          account_id: null,
+          date: todayEST(),
+          amount: Math.abs(diff),
+          notes: "Balance correction",
+        });
       }
       await refresh();
       setShowCCCorrection(false);
@@ -664,9 +737,16 @@ export function CreditCardsContent() {
     }
   };
 
-  const startEditPayment = (p: { id: string; date: string; amount: number; account_id: string | null }) => {
+  const startEditPayment = (p: {
+    id: string;
+    date: string;
+    amount: number;
+    account_id: string | null;
+  }) => {
     setEditingPayId(p.id);
-    setEditPayRefundId(creditCardPayments.find(payment=>payment.id===p.id)?.refund_of_transaction_id || "");
+    setEditPayRefundId(
+      creditCardPayments.find((payment) => payment.id === p.id)?.refund_of_transaction_id || ""
+    );
     setEditPayDate(p.date);
     setEditPayAmount(p.amount.toString());
     setEditPayAccountId(p.account_id || "");
@@ -677,7 +757,18 @@ export function CreditCardsContent() {
     try {
       const amt = parseFloat(editPayAmount);
       if (isNaN(amt) || amt <= 0) return;
-      validateRefund({ id, refund_of_transaction_id: !editPayAccountId ? editPayRefundId : null, amount: amt, date: editPayDate, card_id: creditCardPayments.find(p=>p.id===id)?.card_id }, transactions, creditCardPayments, creditCardCharges);
+      validateRefund(
+        {
+          id,
+          refund_of_transaction_id: !editPayAccountId ? editPayRefundId : null,
+          amount: amt,
+          date: editPayDate,
+          card_id: creditCardPayments.find((p) => p.id === id)?.card_id,
+        },
+        transactions,
+        creditCardPayments,
+        creditCardCharges
+      );
       await updateCreditCardPayment(id, {
         date: editPayDate,
         amount: amt,
@@ -702,28 +793,44 @@ export function CreditCardsContent() {
   return (
     <>
       <div data-tour="credit-cards-header">
-      <PageHeader
-        title="Credit Cards"
-        description="Manage cards, charges, and payments"
-        action={
-          <div className="flex items-center gap-2">
-            {creditCards.length > 0 && (
+        {creditCards.some((c) => c.reconciliation_needed) && (
+          <p role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
+            Unresolved statement balances are excluded from totals. Review their inclusion in All
+            Debts.
+          </p>
+        )}
+        {process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" && (
+          <p className="mb-4 text-sm text-text-secondary">
+            Statement balances and PDF review are in{" "}
+            <a href="/debts" className="underline">
+              All Debts
+            </a>
+            . If you already added a card there, connect the existing card instead of adding it
+            again.
+          </p>
+        )}
+        <PageHeader
+          title="Credit Cards"
+          description="Manage cards, charges, and payments"
+          action={
+            <div className="flex items-center gap-2">
+              {creditCards.length > 0 && (
+                <button
+                  onClick={() => setShowAddCharge(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-secondary px-4 py-2 text-sm font-medium text-text-primary transition hover:-translate-y-0.5 hover:border-accent-blue/40"
+                >
+                  <ShoppingCart className="h-4 w-4" /> Add Charge
+                </button>
+              )}
               <button
-                onClick={() => setShowAddCharge(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-border-subtle bg-bg-secondary px-4 py-2 text-sm font-medium text-text-primary transition hover:-translate-y-0.5 hover:border-accent-blue/40"
+                onClick={() => setShowAddCard(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5"
               >
-                <ShoppingCart className="h-4 w-4" /> Add Charge
+                <Plus className="h-4 w-4" /> Add Card
               </button>
-            )}
-            <button
-              onClick={() => setShowAddCard(true)}
-              className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5"
-            >
-              <Plus className="h-4 w-4" /> Add Card
-            </button>
-          </div>
-        }
-      />
+            </div>
+          }
+        />
       </div>
 
       {/* Stats */}
@@ -763,139 +870,146 @@ export function CreditCardsContent() {
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedCards.map((c) => c.id)} strategy={rectSortingStrategy}>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {orderedCards.map((card) => {
-            const bal = cardBalances[card.id] || 0;
-            const linkedAcct = accounts.find(
-              (a) => a.id === card.linked_account_id
-            );
-            const utilization =
-              card.credit_limit > 0 ? (bal / card.credit_limit) * 100 : 0;
-            const isHighUtil = utilization > 75;
-            const colorClasses = cardColorClasses(card.color, {
-              icon: "bg-accent-purple/10 text-accent-purple",
-              bar: "bg-accent-purple",
-            });
-            return (
-              <SortableCard key={card.id} id={card.id}>
-                {({ Handle }) => (
-              <div
-                className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${card.archived ? "opacity-60" : ""}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClasses.icon}`}>
-                      <CreditCardIcon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-text-primary">
-                        {card.name}
-                        {card.archived && (
-                          <span className="ml-2 rounded bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">Archived</span>
-                        )}
-                      </h3>
-                      <p className="text-xs text-text-secondary">
-                        {card.currency}
-                        {linkedAcct
-                          ? ` • Linked: ${linkedAcct.name}`
-                          : " • No linked account"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Handle />
-                    <button
-                      onClick={() => openEditCard(card)}
-                      className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                     aria-label="Edit" title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCard(card.id, card.name)}
-                      className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                     aria-label="Delete" title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {orderedCards.map((card) => {
+                const bal = cardBalances[card.id] || 0;
+                const linkedAcct = accounts.find((a) => a.id === card.linked_account_id);
+                const utilization = card.credit_limit > 0 ? (bal / card.credit_limit) * 100 : 0;
+                const isHighUtil = utilization > 75;
+                const colorClasses = cardColorClasses(card.color, {
+                  icon: "bg-accent-purple/10 text-accent-purple",
+                  bar: "bg-accent-purple",
+                });
+                return (
+                  <SortableCard key={card.id} id={card.id}>
+                    {({ Handle }) => (
+                      <div
+                        className={`rounded-2xl border border-border-subtle bg-bg-secondary p-5 transition hover:border-accent-blue/30 ${card.archived ? "opacity-60" : ""}`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorClasses.icon}`}
+                            >
+                              <CreditCardIcon className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-semibold text-text-primary">
+                                {card.name}
+                                {card.archived && (
+                                  <span className="ml-2 rounded bg-bg-elevated px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
+                                    Archived
+                                  </span>
+                                )}
+                              </h3>
+                              <p className="text-xs text-text-secondary">
+                                {card.currency}
+                                {linkedAcct
+                                  ? ` • Linked: ${linkedAcct.name}`
+                                  : " • No linked account"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Handle />
+                            <button
+                              onClick={() => openEditCard(card)}
+                              className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                              aria-label="Edit"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteCard(card.id, card.name)}
+                              className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                              aria-label="Delete"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
 
-                <div className="mt-4">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-2xl font-bold text-text-primary">
-                      {showBalances
-                        ? formatMoney(bal, card.currency)
-                        : HIDDEN_BALANCE}
-                    </p>
-                    {card.credit_limit > 0 && (
-                      <span className="text-xs text-text-secondary">
-                        / {showBalances ? formatMoney(card.credit_limit, card.currency) : HIDDEN_BALANCE}
-                      </span>
+                        <div className="mt-4">
+                          <div className="flex items-baseline justify-between">
+                            <p className="text-2xl font-bold text-text-primary">
+                              {card.reconciliation_needed ? "Review needed" : showBalances ? formatMoney(bal, card.currency) : HIDDEN_BALANCE}
+                            </p>
+                            {card.credit_limit > 0 && (
+                              <span className="text-xs text-text-secondary">
+                                /{" "}
+                                {showBalances
+                                  ? formatMoney(card.credit_limit, card.currency)
+                                  : HIDDEN_BALANCE}
+                              </span>
+                            )}
+                          </div>
+                          {card.credit_limit > 0 && (
+                            <div className="mt-2">
+                              <div className="h-1.5 w-full rounded-full bg-bg-elevated">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    isHighUtil ? "bg-red-500" : colorClasses.bar
+                                  }`}
+                                  style={{
+                                    width: `${Math.min(utilization, 100)}%`,
+                                  }}
+                                />
+                              </div>
+                              <div className="mt-1 flex items-center justify-between">
+                                <span className="text-[10px] text-text-secondary">
+                                  {utilization.toFixed(0)}% utilized
+                                </span>
+                                {isHighUtil && (
+                                  <span className="flex items-center gap-0.5 text-[10px] text-red-400">
+                                    <AlertTriangle className="h-2.5 w-2.5" /> High
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-4 flex gap-2">
+                          <button
+                            onClick={() => openPayModal(card.id)}
+                            disabled={bal <= 0}
+                            className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <DollarSign className="mr-1 inline h-3 w-3" />
+                            Pay
+                          </button>
+                          <button
+                            onClick={() => {
+                              setChargeCardId(card.id);
+                              setShowAddCharge(true);
+                            }}
+                            className="flex-1 rounded-xl bg-accent-purple px-3 py-2 text-xs font-medium text-white transition hover:bg-accent-purple/80"
+                          >
+                            <ShoppingCart className="mr-1 inline h-3 w-3" />
+                            Charge
+                          </button>
+                          <button
+                            onClick={() => {
+                              if(process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true"){window.location.assign("/debts");return;}
+                              setCcCorrectionCardId(card.id);
+                              setCcCorrectionAmount(bal.toFixed(2));
+                              setCcCorrectionShowInExpenses(false);
+                              setShowCCCorrection(true);
+                            }}
+                            className="rounded-xl border border-border-subtle px-3 py-2 text-xs font-medium text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
+                          >
+                            <Scale className="mr-1 inline h-3 w-3" />
+                            Correct
+                          </button>
+                        </div>
+                      </div>
                     )}
-                  </div>
-                  {card.credit_limit > 0 && (
-                    <div className="mt-2">
-                      <div className="h-1.5 w-full rounded-full bg-bg-elevated">
-                        <div
-                          className={`h-1.5 rounded-full transition-all ${
-                            isHighUtil ? "bg-red-500" : colorClasses.bar
-                          }`}
-                          style={{
-                            width: `${Math.min(utilization, 100)}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="mt-1 flex items-center justify-between">
-                        <span className="text-[10px] text-text-secondary">
-                          {utilization.toFixed(0)}% utilized
-                        </span>
-                        {isHighUtil && (
-                          <span className="flex items-center gap-0.5 text-[10px] text-red-400">
-                            <AlertTriangle className="h-2.5 w-2.5" /> High
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => openPayModal(card.id)}
-                    disabled={bal <= 0}
-                    className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <DollarSign className="mr-1 inline h-3 w-3" />
-                    Pay
-                  </button>
-                  <button
-                    onClick={() => {
-                      setChargeCardId(card.id);
-                      setShowAddCharge(true);
-                    }}
-                    className="flex-1 rounded-xl bg-accent-purple px-3 py-2 text-xs font-medium text-white transition hover:bg-accent-purple/80"
-                  >
-                    <ShoppingCart className="mr-1 inline h-3 w-3" />
-                    Charge
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCcCorrectionCardId(card.id);
-                      setCcCorrectionAmount(bal.toFixed(2));
-                      setCcCorrectionShowInExpenses(false);
-                      setShowCCCorrection(true);
-                    }}
-                    className="rounded-xl border border-border-subtle px-3 py-2 text-xs font-medium text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
-                  >
-                    <Scale className="mr-1 inline h-3 w-3" />
-                    Correct
-                  </button>
-                </div>
-              </div>
-                )}
-              </SortableCard>
-            );
-          })}
-        </div>
+                  </SortableCard>
+                );
+              })}
+            </div>
           </SortableContext>
         </DndContext>
       )}
@@ -916,7 +1030,9 @@ export function CreditCardsContent() {
             >
               <option value="">All cards</option>
               {creditCards.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
             <select
@@ -926,7 +1042,9 @@ export function CreditCardsContent() {
             >
               <option value="">All categories</option>
               {chargeCategories.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
             <select
@@ -936,12 +1054,18 @@ export function CreditCardsContent() {
             >
               <option value="">All months</option>
               {chargeMonths.map((m) => (
-                <option key={m} value={m}>{format(new Date(m + "-01T00:00:00"), "MMMM yyyy")}</option>
+                <option key={m} value={m}>
+                  {format(new Date(m + "-01T00:00:00"), "MMMM yyyy")}
+                </option>
               ))}
             </select>
             {(filterChargeCard || filterChargeCategory || filterChargeMonth) && (
               <button
-                onClick={() => { setFilterChargeCard(""); setFilterChargeCategory(""); setFilterChargeMonth(""); }}
+                onClick={() => {
+                  setFilterChargeCard("");
+                  setFilterChargeCategory("");
+                  setFilterChargeMonth("");
+                }}
                 className="text-xs text-accent-blue hover:underline"
               >
                 Clear filters
@@ -954,131 +1078,192 @@ export function CreditCardsContent() {
               No charges match the selected filters.
             </p>
           ) : (
-          <div className="overflow-x-auto rounded-2xl border border-border-subtle">
-            <table className="money-ledger-list w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
-              <thead>
-                <tr className="border-b border-border-subtle bg-bg-secondary">
-                  <th
-                    className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium text-text-secondary hover:text-text-primary max-w-[180px]"
-                    onClick={() => toggleSort("merchant")}
-                  >
-                    Merchant
-                    <SortIcon col="merchant" />
-                  </th>
-                  <th
-                    className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium text-text-secondary hover:text-text-primary"
-                    onClick={() => toggleSort("date")}
-                  >
-                    Date
-                    <SortIcon col="date" />
-                  </th>
-                  <th
-                    className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium text-text-secondary hover:text-text-primary"
-                    onClick={() => toggleSort("card")}
-                  >
-                    Card
-                    <SortIcon col="card" />
-                  </th>
-
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
-                    Category
-                  </th>
-                  <th
-                    className="cursor-pointer select-none px-4 py-3 text-right text-xs font-medium text-text-secondary hover:text-text-primary"
-                    onClick={() => toggleSort("amount")}
-                  >
-                    Amount
-                    <SortIcon col="amount" />
-                  </th>
-                  {showCCBalance && (
-                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
-                      Balance
-                    </th>
-                  )}
-                  <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedCharges.map((charge) => {
-                  const card = creditCards.find(
-                    (c) => c.id === charge.card_id
-                  );
-                  const linkedTransaction = transactions.find(t => t.id === charge.linked_transaction_id || t.linked_charge_id === charge.id);
-
-                  return (
-                    <tr
-                      key={charge.id}
-                      className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+            <div className="overflow-x-auto rounded-2xl border border-border-subtle">
+              <table className="money-ledger-list w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-bg-secondary">
+                    <th
+                      className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium text-text-secondary hover:text-text-primary max-w-[180px]"
+                      onClick={() => toggleSort("merchant")}
                     >
-                      <td className="px-4 py-3 text-text-secondary" data-field="merchant">
-                        {(
-                          <span className="block max-w-[180px]">
-                            <span className="block truncate" title={charge.merchant || undefined}>{charge.merchant || "—"}</span>
-                            {charge.notes && <span className="block truncate text-[10px] text-text-secondary/70" title={charge.notes}>{charge.notes}</span>}
-                            {linkedTransaction && (linkedTransaction.personal_share_percent ?? 100) < 100 && <span className="mt-1 block whitespace-normal text-xs text-accent-blue">Shared{linkedTransaction.shared_with ? ` with ${linkedTransaction.shared_with}` : ""} · {linkedTransaction.personal_share_percent}% yours</span>}
-                            {(linkedTransaction?.refunded_amount ?? 0) > 0 && <span className="mt-1 block text-xs text-accent-blue">Refunded {formatMoney(linkedTransaction!.refunded_amount!, linkedTransaction!.currency)}</span>}
-                            {linkedTransaction?.exclude_from_monthly && <span className="inline-flex rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-yellow-600 dark:text-yellow-400">Excluded</span>}
+                      Merchant
+                      <SortIcon col="merchant" />
+                    </th>
+                    <th
+                      className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium text-text-secondary hover:text-text-primary"
+                      onClick={() => toggleSort("date")}
+                    >
+                      Date
+                      <SortIcon col="date" />
+                    </th>
+                    <th
+                      className="cursor-pointer select-none px-4 py-3 text-left text-xs font-medium text-text-secondary hover:text-text-primary"
+                      onClick={() => toggleSort("card")}
+                    >
+                      Card
+                      <SortIcon col="card" />
+                    </th>
 
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-text-primary" data-field="date">
-                        {(
-                          format(new Date(charge.date + "T00:00:00"), "d MMM yyyy")
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-text-primary" data-field="account">
-                        <span className="block max-w-[130px] truncate" title={card?.name || undefined}>{card?.name || "—"}</span>
-                      </td>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      Category
+                    </th>
+                    <th
+                      className="cursor-pointer select-none px-4 py-3 text-right text-xs font-medium text-text-secondary hover:text-text-primary"
+                      onClick={() => toggleSort("amount")}
+                    >
+                      Amount
+                      <SortIcon col="amount" />
+                    </th>
+                    {showCCBalance && (
+                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                        Balance
+                      </th>
+                    )}
+                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedCharges.map((charge) => {
+                    const card = creditCards.find((c) => c.id === charge.card_id);
+                    const linkedTransaction = transactions.find(
+                      (t) =>
+                        t.id === charge.linked_transaction_id || t.linked_charge_id === charge.id
+                    );
 
-                      <td className="px-4 py-3 text-text-secondary" data-field="category">
-                        {(
-                          charge.category || "—"
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-red-400" data-field="amount">
-                        {(
-                          showBalances
-                            ? formatMoney(charge.amount, card?.currency ?? baseCurrency)
-                            : HIDDEN_BALANCE
-                        )}
-                      </td>
-                      {showCCBalance && (
-                        <td className="px-4 py-3 text-right font-semibold text-text-primary" data-field="balance">
-                          {showBalances && ccRunningBalances[charge.id] != null
-                            ? formatMoney(ccRunningBalances[charge.id], card?.currency ?? baseCurrency)
-                            : showBalances ? "—" : HIDDEN_BALANCE}
+                    return (
+                      <tr
+                        key={charge.id}
+                        className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+                      >
+                        <td className="px-4 py-3 text-text-secondary" data-field="merchant">
+                          {
+                            <span className="block max-w-[180px]">
+                              <span className="block truncate" title={charge.merchant || undefined}>
+                                {charge.merchant || "—"}
+                              </span>
+                              {charge.notes && (
+                                <span
+                                  className="block truncate text-[10px] text-text-secondary/70"
+                                  title={charge.notes}
+                                >
+                                  {charge.notes}
+                                </span>
+                              )}
+                              {linkedTransaction &&
+                                (linkedTransaction.personal_share_percent ?? 100) < 100 && (
+                                  <span className="mt-1 block whitespace-normal text-xs text-accent-blue">
+                                    Shared
+                                    {linkedTransaction.shared_with
+                                      ? ` with ${linkedTransaction.shared_with}`
+                                      : ""}{" "}
+                                    · {linkedTransaction.personal_share_percent}% yours
+                                  </span>
+                                )}
+                              {(linkedTransaction?.refunded_amount ?? 0) > 0 && (
+                                <span className="mt-1 block text-xs text-accent-blue">
+                                  Refunded{" "}
+                                  {formatMoney(
+                                    linkedTransaction!.refunded_amount!,
+                                    linkedTransaction!.currency
+                                  )}
+                                </span>
+                              )}
+                              {linkedTransaction?.exclude_from_monthly && (
+                                <span className="inline-flex rounded bg-yellow-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-yellow-600 dark:text-yellow-400">
+                                  Excluded
+                                </span>
+                              )}
+                            </span>
+                          }
                         </td>
-                      )}
-                      <td className="px-4 py-3 text-right" data-field="actions">
-                        {(
-                          <div className="flex items-center justify-end gap-1">
-                            {linkedTransaction && (linkedTransaction.refunded_amount ?? 0) < linkedTransaction.amount && <button aria-label="Refund charge" onClick={()=>{openPayModal(charge.card_id); setPaySource("credit"); setPayRefundId(linkedTransaction.id); setPayMode("custom"); setPayAmount(String(linkedTransaction.amount - (linkedTransaction.refunded_amount ?? 0)));}} className="rounded-lg px-2 py-1 text-xs font-medium text-accent-blue hover:bg-accent-blue/10">Refund</button>}
-                            <button
-                              aria-label="Edit charge"
-                              onClick={() => startEditCharge(charge)}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              aria-label="Delete charge"
-                              onClick={() => handleDeleteCharge(charge.id)}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                        <td className="px-4 py-3 text-text-primary" data-field="date">
+                          {format(new Date(charge.date + "T00:00:00"), "d MMM yyyy")}
+                        </td>
+                        <td className="px-4 py-3 text-text-primary" data-field="account">
+                          <span
+                            className="block max-w-[130px] truncate"
+                            title={card?.name || undefined}
+                          >
+                            {card?.name || "—"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-text-secondary" data-field="category">
+                          {charge.category || "—"}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-right font-semibold text-red-400"
+                          data-field="amount"
+                        >
+                          {showBalances
+                            ? formatMoney(charge.amount, card?.currency ?? baseCurrency)
+                            : HIDDEN_BALANCE}
+                        </td>
+                        {showCCBalance && (
+                          <td
+                            className="px-4 py-3 text-right font-semibold text-text-primary"
+                            data-field="balance"
+                          >
+                            {showBalances && ccRunningBalances[charge.id] != null
+                              ? formatMoney(
+                                  ccRunningBalances[charge.id],
+                                  card?.currency ?? baseCurrency
+                                )
+                              : showBalances
+                                ? "—"
+                                : HIDDEN_BALANCE}
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <td className="px-4 py-3 text-right" data-field="actions">
+                          {
+                            <div className="flex items-center justify-end gap-1">
+                              {linkedTransaction &&
+                                (linkedTransaction.refunded_amount ?? 0) <
+                                  linkedTransaction.amount && (
+                                  <button
+                                    aria-label="Refund charge"
+                                    onClick={() => {
+                                      openPayModal(charge.card_id);
+                                      setPaySource("credit");
+                                      setPayRefundId(linkedTransaction.id);
+                                      setPayMode("custom");
+                                      setPayAmount(
+                                        String(
+                                          linkedTransaction.amount -
+                                            (linkedTransaction.refunded_amount ?? 0)
+                                        )
+                                      );
+                                    }}
+                                    className="rounded-lg px-2 py-1 text-xs font-medium text-accent-blue hover:bg-accent-blue/10"
+                                  >
+                                    Refund
+                                  </button>
+                                )}
+                              <button
+                                aria-label="Edit charge"
+                                onClick={() => startEditCharge(charge)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                aria-label="Delete charge"
+                                onClick={() => handleDeleteCharge(charge.id)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       )}
@@ -1099,7 +1284,9 @@ export function CreditCardsContent() {
             >
               <option value="">All cards</option>
               {creditCards.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
             <select
@@ -1109,7 +1296,9 @@ export function CreditCardsContent() {
             >
               <option value="">All sources</option>
               {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
               ))}
               <option value="cashback">Cashback</option>
               <option value="credit">Credit / Refund</option>
@@ -1123,12 +1312,18 @@ export function CreditCardsContent() {
             >
               <option value="">All months</option>
               {paymentMonths.map((m) => (
-                <option key={m} value={m}>{format(new Date(m + "-01T00:00:00"), "MMMM yyyy")}</option>
+                <option key={m} value={m}>
+                  {format(new Date(m + "-01T00:00:00"), "MMMM yyyy")}
+                </option>
               ))}
             </select>
             {(filterPayCard || filterPayAccount || filterPayMonth) && (
               <button
-                onClick={() => { setFilterPayCard(""); setFilterPayAccount(""); setFilterPayMonth(""); }}
+                onClick={() => {
+                  setFilterPayCard("");
+                  setFilterPayAccount("");
+                  setFilterPayMonth("");
+                }}
                 className="text-xs text-accent-blue hover:underline"
               >
                 Clear filters
@@ -1140,120 +1335,330 @@ export function CreditCardsContent() {
               No payments match the selected filters.
             </p>
           ) : (
-          <div className="overflow-x-auto rounded-2xl border border-border-subtle">
-            <table className="money-ledger-list w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
-              <thead>
-                <tr className="border-b border-border-subtle bg-bg-secondary">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
-                    Card
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
-                    Paid From
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
-                    Amount
-                  </th>
-                  {showPayBalance && (
-                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
-                      Balance
+            <div className="overflow-x-auto rounded-2xl border border-border-subtle">
+              <table className="money-ledger-list w-full min-w-[500px] text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-bg-secondary">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      Date
                     </th>
-                  )}
-                  <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredPayments.map((payment) => {
-                  const card = creditCards.find(
-                    (c) => c.id === payment.card_id
-                  );
-                  const acct = accounts.find(
-                    (a) => a.id === payment.account_id
-                  );
-                  const paymentSource = getCreditCardPaymentSource(payment);
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      Card
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-text-secondary">
+                      Paid From
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                      Amount
+                    </th>
+                    {showPayBalance && (
+                      <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                        Balance
+                      </th>
+                    )}
+                    <th className="px-4 py-3 text-right text-xs font-medium text-text-secondary">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPayments.map((payment) => {
+                    const card = creditCards.find((c) => c.id === payment.card_id);
+                    const acct = accounts.find((a) => a.id === payment.account_id);
+                    const paymentSource = getCreditCardPaymentSource(payment);
 
-                  return (
-                    <tr
-                      key={payment.id}
-                      className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
-                    >
-                      <td className="px-4 py-3 text-text-primary" data-field="date">
-                        {format(new Date(payment.date + "T00:00:00"), "d MMM yyyy")}
-                      </td>
-                      <td className="px-4 py-3 text-text-primary" data-field="merchant">
-                        <span className="block max-w-[130px] truncate" title={card?.name || undefined}>{card?.name || "—"}</span>
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary" data-field="account">
-                        {payment.account_id ? (
-                          <span className="block max-w-[130px] truncate" title={acct?.name || undefined}>{acct?.name || "—"}</span>
-                        ) : paymentSource === "credit" ? (
-                          <span className="inline-flex rounded-lg bg-accent-blue/10 px-2 py-0.5 text-[11px] font-medium text-accent-blue">Credit / Refund</span>
-                        ) : paymentSource === "cashback" ? (
-                          <span className="inline-flex rounded-lg bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">Cashback</span>
-                        ) : paymentSource === "correction" ? (
-                          <span className="inline-flex rounded-lg bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-400">Balance correction</span>
-                        ) : (
-                          <span className="inline-flex rounded-lg bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-text-secondary">Other adjustment</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-emerald-400" data-field="amount">
-                        {showBalances
-                          ? formatMoney(payment.amount, card?.currency ?? baseCurrency)
-                          : HIDDEN_BALANCE}
-                      </td>
-                      {showPayBalance && (
-                        <td className="px-4 py-3 text-right font-semibold text-text-primary" data-field="balance">
-                          {showBalances && payRunningBalances[payment.id] != null
-                            ? formatMoney(payRunningBalances[payment.id], card?.currency ?? baseCurrency)
-                            : showBalances ? "—" : HIDDEN_BALANCE}
+                    return (
+                      <tr
+                        key={payment.id}
+                        className="border-b border-border-subtle last:border-0 hover:bg-bg-elevated/50"
+                      >
+                        <td className="px-4 py-3 text-text-primary" data-field="date">
+                          {format(new Date(payment.date + "T00:00:00"), "d MMM yyyy")}
                         </td>
-                      )}
-                      <td className="px-4 py-3 text-right" data-field="actions">
-                        {(
-                          <div className="flex items-center justify-end gap-1">
-                            <button aria-label="Edit payment" onClick={() => startEditPayment(payment)}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"><Pencil className="h-4 w-4" /></button>
-                            <button onClick={() => handleDeletePayment(payment.id)}
-                              className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400" aria-label="Delete" title="Delete"><Trash2 className="h-4 w-4" /></button>
-                          </div>
+                        <td className="px-4 py-3 text-text-primary" data-field="merchant">
+                          <span
+                            className="block max-w-[130px] truncate"
+                            title={card?.name || undefined}
+                          >
+                            {card?.name || "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-text-secondary" data-field="account">
+                          {payment.account_id ? (
+                            <span
+                              className="block max-w-[130px] truncate"
+                              title={acct?.name || undefined}
+                            >
+                              {acct?.name || "—"}
+                            </span>
+                          ) : paymentSource === "credit" ? (
+                            <span className="inline-flex rounded-lg bg-accent-blue/10 px-2 py-0.5 text-[11px] font-medium text-accent-blue">
+                              Credit / Refund
+                            </span>
+                          ) : paymentSource === "cashback" ? (
+                            <span className="inline-flex rounded-lg bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-400">
+                              Cashback
+                            </span>
+                          ) : paymentSource === "correction" ? (
+                            <span className="inline-flex rounded-lg bg-violet-500/10 px-2 py-0.5 text-[11px] font-medium text-violet-400">
+                              Balance correction
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-lg bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                              Other adjustment
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-right font-semibold text-emerald-400"
+                          data-field="amount"
+                        >
+                          {showBalances
+                            ? formatMoney(payment.amount, card?.currency ?? baseCurrency)
+                            : HIDDEN_BALANCE}
+                        </td>
+                        {showPayBalance && (
+                          <td
+                            className="px-4 py-3 text-right font-semibold text-text-primary"
+                            data-field="balance"
+                          >
+                            {showBalances && payRunningBalances[payment.id] != null
+                              ? formatMoney(
+                                  payRunningBalances[payment.id],
+                                  card?.currency ?? baseCurrency
+                                )
+                              : showBalances
+                                ? "—"
+                                : HIDDEN_BALANCE}
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <td className="px-4 py-3 text-right" data-field="actions">
+                          {
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                aria-label="Edit payment"
+                                onClick={() => startEditPayment(payment)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePayment(payment.id)}
+                                className="rounded-lg p-1 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
+                                aria-label="Delete"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          }
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       )}
 
       {/* Add Card Modal */}
-      <TransactionEditDialog open={!!editingChargeId} title="Edit Charge" saving={saving} onClose={() => setEditingChargeId(null)} onSave={async () => {if (editingChargeId) await handleSaveEditCharge(editingChargeId);}}>
-        <div className="grid gap-5 sm:grid-cols-2"><EditField label="Date"><input aria-label="Date" type="date" required value={editChargeDate} onChange={event => setEditChargeDate(event.target.value)} /></EditField><EditField label={`Amount (${creditCards.find(card => card.id === creditCardCharges.find(charge => charge.id === editingChargeId)?.card_id)?.currency || baseCurrency})`}><input aria-label="Amount" type="number" required min="0.01" step="0.01" value={editChargeAmount} onChange={event => setEditChargeAmount(event.target.value)} /></EditField><EditField label="Category"><select aria-label="Category" value={editChargeCategory} onChange={event => setEditChargeCategory(event.target.value)}>{!chargeCategories.includes(editChargeCategory) && <option value={editChargeCategory}>{editChargeCategory}</option>}{chargeCategories.map(value => <option key={value} value={value}>{value}</option>)}</select></EditField><EditField label="Card"><div className="rounded-xl bg-bg-elevated px-3 py-3 text-sm text-text-primary">{creditCards.find(card => card.id === creditCardCharges.find(charge => charge.id === editingChargeId)?.card_id)?.name || "Credit card"}</div></EditField></div>
-        <EditField label="Merchant"><MerchantInput value={editChargeMerchant} onChange={setEditChargeMerchant} records={merchantHistory} /></EditField>
-        <EditField label="Notes"><textarea aria-label="Notes" rows={2} placeholder="Add a note…" value={editChargeNotes} onChange={event => setEditChargeNotes(event.target.value)} /></EditField>
-        {transactions.some(tx => tx.linked_charge_id === editingChargeId || tx.id === creditCardCharges.find(charge => charge.id === editingChargeId)?.linked_transaction_id) && <section className="transaction-editor-options"><h3 className="text-sm font-semibold text-text-primary">Spending preferences</h3><ExpenseShare percent={editSharePercent} onPercentChange={setEditSharePercent} sharedWith={editSharedWith} onSharedWithChange={setEditSharedWith} amount={Number(editChargeAmount)} currency={creditCards.find(card => card.id === creditCardCharges.find(charge => charge.id === editingChargeId)?.card_id)?.currency || baseCurrency} excluded={editChargeExcluded} /><MonthlyExclusion checked={editChargeExcluded} onChange={setEditChargeExcluded} /><EditField label="Link to goal"><select aria-label="Link to goal" value={editChargeGoalId} onChange={event => setEditChargeGoalId(event.target.value)}><option value="">No goal</option>{goals.map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}</select></EditField></section>}
-      </TransactionEditDialog>
-      <TransactionEditDialog open={!!editingPayId} title="Edit Payment" saving={saving} onClose={()=>setEditingPayId(null)} onSave={async()=>{if(editingPayId) await handleSavePaymentEdit(editingPayId);}}>
-<div className="grid gap-5 sm:grid-cols-2">
-<EditField label="Date"><input aria-label="Date" required type="date" value={editPayDate} onChange={event=>setEditPayDate(event.target.value)} /></EditField>
-<EditField label="Amount"><input aria-label="Amount" required type="number" min="0.01" step="0.01" value={editPayAmount} onChange={event=>setEditPayAmount(event.target.value)} /></EditField>
-</div><EditField label="Paid from"><select aria-label="Paid from" value={editPayAccountId} onChange={event=>setEditPayAccountId(event.target.value)}><option value="">Credit / refund</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select></EditField>
-{!editPayAccountId && <RefundExpensePicker required={false} transactions={transactions.filter(t=>creditCardCharges.some(c=>c.card_id===creditCardPayments.find(p=>p.id===editingPayId)?.card_id && (c.id===t.linked_charge_id || c.linked_transaction_id===t.id)))} value={editPayRefundId} onChange={setEditPayRefundId} currency={creditCards.find(c=>c.id===creditCardPayments.find(p=>p.id===editingPayId)?.card_id)?.currency || baseCurrency} amount={Number(editPayAmount)} restoredAmount={creditCardPayments.find(p=>p.id===editingPayId)?.refund_of_transaction_id === editPayRefundId ? creditCardPayments.find(p=>p.id===editingPayId)?.amount : 0} />}
-</TransactionEditDialog>
-      <Modal
-        open={showAddCard}
-        onClose={() => setShowAddCard(false)}
-        title="Add Credit Card"
+      <TransactionEditDialog
+        open={!!editingChargeId}
+        title="Edit Charge"
+        saving={saving}
+        onClose={() => setEditingChargeId(null)}
+        onSave={async () => {
+          if (editingChargeId) await handleSaveEditCharge(editingChargeId);
+        }}
       >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <EditField label="Date">
+            <input
+              aria-label="Date"
+              type="date"
+              required
+              value={editChargeDate}
+              onChange={(event) => setEditChargeDate(event.target.value)}
+            />
+          </EditField>
+          <EditField
+            label={`Amount (${creditCards.find((card) => card.id === creditCardCharges.find((charge) => charge.id === editingChargeId)?.card_id)?.currency || baseCurrency})`}
+          >
+            <input
+              aria-label="Amount"
+              type="number"
+              required
+              min="0.01"
+              step="0.01"
+              value={editChargeAmount}
+              onChange={(event) => setEditChargeAmount(event.target.value)}
+            />
+          </EditField>
+          <EditField label="Category">
+            <select
+              aria-label="Category"
+              value={editChargeCategory}
+              onChange={(event) => setEditChargeCategory(event.target.value)}
+            >
+              {!chargeCategories.includes(editChargeCategory) && (
+                <option value={editChargeCategory}>{editChargeCategory}</option>
+              )}
+              {chargeCategories.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </EditField>
+          <EditField label="Card">
+            <div className="rounded-xl bg-bg-elevated px-3 py-3 text-sm text-text-primary">
+              {creditCards.find(
+                (card) =>
+                  card.id ===
+                  creditCardCharges.find((charge) => charge.id === editingChargeId)?.card_id
+              )?.name || "Credit card"}
+            </div>
+          </EditField>
+        </div>
+        <EditField label="Merchant">
+          <MerchantInput
+            value={editChargeMerchant}
+            onChange={setEditChargeMerchant}
+            records={merchantHistory}
+          />
+        </EditField>
+        <EditField label="Notes">
+          <textarea
+            aria-label="Notes"
+            rows={2}
+            placeholder="Add a note…"
+            value={editChargeNotes}
+            onChange={(event) => setEditChargeNotes(event.target.value)}
+          />
+        </EditField>
+        {transactions.some(
+          (tx) =>
+            tx.linked_charge_id === editingChargeId ||
+            tx.id ===
+              creditCardCharges.find((charge) => charge.id === editingChargeId)
+                ?.linked_transaction_id
+        ) && (
+          <section className="transaction-editor-options">
+            <h3 className="text-sm font-semibold text-text-primary">Spending preferences</h3>
+            <ExpenseShare
+              percent={editSharePercent}
+              onPercentChange={setEditSharePercent}
+              sharedWith={editSharedWith}
+              onSharedWithChange={setEditSharedWith}
+              amount={Number(editChargeAmount)}
+              currency={
+                creditCards.find(
+                  (card) =>
+                    card.id ===
+                    creditCardCharges.find((charge) => charge.id === editingChargeId)?.card_id
+                )?.currency || baseCurrency
+              }
+              excluded={editChargeExcluded}
+            />
+            <MonthlyExclusion checked={editChargeExcluded} onChange={setEditChargeExcluded} />
+            <EditField label="Link to goal">
+              <select
+                aria-label="Link to goal"
+                value={editChargeGoalId}
+                onChange={(event) => setEditChargeGoalId(event.target.value)}
+              >
+                <option value="">No goal</option>
+                {goals.map((goal) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.name}
+                  </option>
+                ))}
+              </select>
+            </EditField>
+          </section>
+        )}
+      </TransactionEditDialog>
+      <TransactionEditDialog
+        open={!!editingPayId}
+        title="Edit Payment"
+        saving={saving}
+        onClose={() => setEditingPayId(null)}
+        onSave={async () => {
+          if (editingPayId) await handleSavePaymentEdit(editingPayId);
+        }}
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <EditField label="Date">
+            <input
+              aria-label="Date"
+              required
+              type="date"
+              value={editPayDate}
+              onChange={(event) => setEditPayDate(event.target.value)}
+            />
+          </EditField>
+          <EditField label="Amount">
+            <input
+              aria-label="Amount"
+              required
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={editPayAmount}
+              onChange={(event) => setEditPayAmount(event.target.value)}
+            />
+          </EditField>
+        </div>
+        <EditField label="Paid from">
+          <select
+            aria-label="Paid from"
+            value={editPayAccountId}
+            onChange={(event) => setEditPayAccountId(event.target.value)}
+          >
+            <option value="">Credit / refund</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.currency})
+              </option>
+            ))}
+          </select>
+        </EditField>
+        {!editPayAccountId && (
+          <RefundExpensePicker
+            required={false}
+            transactions={transactions.filter((t) =>
+              creditCardCharges.some(
+                (c) =>
+                  c.card_id === creditCardPayments.find((p) => p.id === editingPayId)?.card_id &&
+                  (c.id === t.linked_charge_id || c.linked_transaction_id === t.id)
+              )
+            )}
+            value={editPayRefundId}
+            onChange={setEditPayRefundId}
+            currency={
+              creditCards.find(
+                (c) => c.id === creditCardPayments.find((p) => p.id === editingPayId)?.card_id
+              )?.currency || baseCurrency
+            }
+            amount={Number(editPayAmount)}
+            restoredAmount={
+              creditCardPayments.find((p) => p.id === editingPayId)?.refund_of_transaction_id ===
+              editPayRefundId
+                ? creditCardPayments.find((p) => p.id === editingPayId)?.amount
+                : 0
+            }
+          />
+        )}
+      </TransactionEditDialog>
+      <Modal open={showAddCard} onClose={() => setShowAddCard(false)} title="Add Credit Card">
         <form onSubmit={handleAddCard} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-1">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="credit-cards-field-1"
+            >
               Card Name
             </label>
             <input
@@ -1261,20 +1666,23 @@ export function CreditCardsContent() {
               value={cardName}
               onChange={(e) => setCardName(e.target.value)}
               placeholder="e.g., Visa Gold"
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-1"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="credit-cards-field-1"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-2">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-2"
+              >
                 Currency
               </label>
               <select
                 value={cardCurrency}
-                onChange={(e) =>
-                  setCardCurrency(e.target.value as CurrencyCode)
-                }
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-2"
+                onChange={(e) => setCardCurrency(e.target.value as CurrencyCode)}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-2"
               >
                 <option value="GBP">GBP</option>
                 <option value="EUR">EUR</option>
@@ -1284,7 +1692,10 @@ export function CreditCardsContent() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-3">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-3"
+              >
                 Credit Limit
               </label>
               <input
@@ -1293,18 +1704,23 @@ export function CreditCardsContent() {
                 value={cardLimit}
                 onChange={(e) => setCardLimit(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-3"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-3"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-4">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="credit-cards-field-4"
+            >
               Linked Account (payments come from here)
             </label>
             <select
               value={cardLinkedAccount}
               onChange={(e) => setCardLinkedAccount(e.target.value)}
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-4"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="credit-cards-field-4"
             >
               <option value="">None</option>
               {accounts.map((a) => (
@@ -1315,9 +1731,7 @@ export function CreditCardsContent() {
             </select>
           </div>
           {cardError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {cardError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{cardError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -1340,34 +1754,36 @@ export function CreditCardsContent() {
       </Modal>
 
       {/* Edit Card Modal */}
-      <Modal
-        open={editCard !== null}
-        onClose={() => setEditCard(null)}
-        title="Edit Credit Card"
-      >
+      <Modal open={editCard !== null} onClose={() => setEditCard(null)} title="Edit Credit Card">
         <form onSubmit={handleEditCard} className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-5">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="credit-cards-field-5"
+            >
               Card Name
             </label>
             <input
               type="text"
               value={editCardName}
               onChange={(e) => setEditCardName(e.target.value)}
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-5"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="credit-cards-field-5"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-6">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-6"
+              >
                 Currency
               </label>
               <select
                 value={editCardCurrency}
-                onChange={(e) =>
-                  setEditCardCurrency(e.target.value as CurrencyCode)
-                }
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-6"
+                onChange={(e) => setEditCardCurrency(e.target.value as CurrencyCode)}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-6"
               >
                 <option value="GBP">GBP</option>
                 <option value="EUR">EUR</option>
@@ -1377,7 +1793,10 @@ export function CreditCardsContent() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-7">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-7"
+              >
                 Credit Limit
               </label>
               <input
@@ -1385,18 +1804,23 @@ export function CreditCardsContent() {
                 step="0.01"
                 value={editCardLimit}
                 onChange={(e) => setEditCardLimit(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-7"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-7"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-8">
+            <label
+              className="mb-1 block text-xs font-medium text-text-secondary"
+              htmlFor="credit-cards-field-8"
+            >
               Linked Account
             </label>
             <select
               value={editCardLinkedAccount}
               onChange={(e) => setEditCardLinkedAccount(e.target.value)}
-              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-8"
+              className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+              id="credit-cards-field-8"
             >
               <option value="">None</option>
               {accounts.map((a) => (
@@ -1407,9 +1831,7 @@ export function CreditCardsContent() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Color
-            </label>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Color</label>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1431,7 +1853,15 @@ export function CreditCardsContent() {
             </div>
           </div>
           <label className="flex items-center gap-3 cursor-pointer">
-            <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center"><input type="checkbox" aria-label="Archived" checked={editCardArchived} onChange={event => setEditCardArchived(event.target.checked)} className="h-4 w-4 accent-[var(--accent-blue)]" /></label>
+            <label className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
+              <input
+                type="checkbox"
+                aria-label="Archived"
+                checked={editCardArchived}
+                onChange={(event) => setEditCardArchived(event.target.checked)}
+                className="h-4 w-4 accent-[var(--accent-blue)]"
+              />
+            </label>
             <span className="text-sm text-text-primary">Archive (sort to bottom)</span>
           </label>
           {editCardError && (
@@ -1460,32 +1890,36 @@ export function CreditCardsContent() {
       </Modal>
 
       {/* Add Charge Modal */}
-      <Modal
-        open={showAddCharge}
-        onClose={() => setShowAddCharge(false)}
-        title="Add Charge"
-      >
+      <Modal open={showAddCharge} onClose={() => setShowAddCharge(false)} title="Add Charge">
         <form onSubmit={handleAddCharge} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="min-w-0">
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-9">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-9"
+              >
                 Date
               </label>
               <input
                 type="date"
                 value={chargeDate}
                 onChange={(e) => setChargeDate(e.target.value)}
-                className="w-full max-w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple [&::-webkit-datetime-edit]:min-w-0" id="credit-cards-field-9"
+                className="w-full max-w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple [&::-webkit-datetime-edit]:min-w-0"
+                id="credit-cards-field-9"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-10">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-10"
+              >
                 Card
               </label>
               <select
                 value={chargeCardId}
                 onChange={(e) => setChargeCardId(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-10"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-10"
               >
                 <option value="">Select card…</option>
                 {creditCards.map((c) => (
@@ -1498,7 +1932,10 @@ export function CreditCardsContent() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-11">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-11"
+              >
                 Amount
               </label>
               <input
@@ -1507,17 +1944,22 @@ export function CreditCardsContent() {
                 value={chargeAmount}
                 onChange={(e) => setChargeAmount(e.target.value)}
                 placeholder="0.00"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-11"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-11"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-12">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="credit-cards-field-12"
+              >
                 Category
               </label>
               <select
                 value={chargeCategory}
                 onChange={(e) => setChargeCategory(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-12"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="credit-cards-field-12"
               >
                 {categories.map((c) => (
                   <option key={c} value={c}>
@@ -1528,11 +1970,20 @@ export function CreditCardsContent() {
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-text-secondary">
-              Merchant
-            </label>
-            <MerchantInput id="charge-merchant" value={chargeMerchant} onChange={setChargeMerchant} records={merchantHistory} onSelectCategory={value => { if (categories.includes(value)) setChargeCategory(value); }} onNewMerchant={value => autoCategorize(value, chargeNotes)} />
-            <p aria-live="polite" className="mt-1 min-h-4 text-[11px] text-accent-purple">{autoCategorizePending ? "Suggesting category…" : ""}</p>
+            <label className="mb-1 block text-xs font-medium text-text-secondary">Merchant</label>
+            <MerchantInput
+              id="charge-merchant"
+              value={chargeMerchant}
+              onChange={setChargeMerchant}
+              records={merchantHistory}
+              onSelectCategory={(value) => {
+                if (categories.includes(value)) setChargeCategory(value);
+              }}
+              onNewMerchant={(value) => autoCategorize(value, chargeNotes)}
+            />
+            <p aria-live="polite" className="mt-1 min-h-4 text-[11px] text-accent-purple">
+              {autoCategorizePending ? "Suggesting category…" : ""}
+            </p>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-text-secondary">
@@ -1545,23 +1996,61 @@ export function CreditCardsContent() {
               value={chargeNotes}
               onChange={(e) => setChargeNotes(e.target.value)}
               onBlur={(e) => {
-                const merchantEl = document.getElementById("charge-merchant") as HTMLInputElement | null;
+                const merchantEl = document.getElementById(
+                  "charge-merchant"
+                ) as HTMLInputElement | null;
                 autoCategorize(merchantEl?.value || "", e.target.value);
               }}
               placeholder="Add a note..."
               className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
             />
           </div>
-          <label className="block text-xs font-medium text-text-secondary">Link to goal (optional)<select aria-label="Link to goal" value={chargeGoalId} onChange={event => setChargeGoalId(event.target.value)} className="mt-2 w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary"><option value="">No goal</option>{goals.map(goal => <option key={goal.id} value={goal.id}>{goal.name}</option>)}</select></label>
-          <ExpenseShare percent={sharePercent} onPercentChange={setSharePercent} sharedWith={sharedWith} onSharedWithChange={setSharedWith} amount={Number(chargeAmount)} currency={creditCards.find(card => card.id === chargeCardId)?.currency || baseCurrency} excluded={chargeExcluded} />
+          <label className="block text-xs font-medium text-text-secondary">
+            Link to goal (optional)
+            <select
+              aria-label="Link to goal"
+              value={chargeGoalId}
+              onChange={(event) => setChargeGoalId(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary"
+            >
+              <option value="">No goal</option>
+              {goals.map((goal) => (
+                <option key={goal.id} value={goal.id}>
+                  {goal.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ExpenseShare
+            percent={sharePercent}
+            onPercentChange={setSharePercent}
+            sharedWith={sharedWith}
+            onSharedWithChange={setSharedWith}
+            amount={Number(chargeAmount)}
+            currency={
+              creditCards.find((card) => card.id === chargeCardId)?.currency || baseCurrency
+            }
+            excluded={chargeExcluded}
+          />
           <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border-subtle bg-bg-elevated p-4">
-            <input type="checkbox" checked={chargeExcluded} onChange={event => setChargeExcluded(event.target.checked)} className="mt-1 h-4 w-4 accent-[var(--accent-blue)]" />
-            <span><span className="block text-sm font-medium text-text-primary">Exclude from monthly totals</span><span className="mt-1 block text-xs text-text-secondary">Keep this charge in your card balance, but leave it out of spending reports and forecasts.</span></span>
+            <input
+              type="checkbox"
+              checked={chargeExcluded}
+              onChange={(event) => setChargeExcluded(event.target.checked)}
+              className="mt-1 h-4 w-4 accent-[var(--accent-blue)]"
+            />
+            <span>
+              <span className="block text-sm font-medium text-text-primary">
+                Exclude from monthly totals
+              </span>
+              <span className="mt-1 block text-xs text-text-secondary">
+                Keep this charge in your card balance, but leave it out of spending reports and
+                forecasts.
+              </span>
+            </span>
           </label>
           {chargeError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {chargeError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{chargeError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -1597,29 +2086,29 @@ export function CreditCardsContent() {
               <>
                 <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-text-secondary">
-                      {card?.name || "Card"}
-                    </span>
+                    <span className="text-sm text-text-secondary">{card?.name || "Card"}</span>
                     <span className="text-lg font-bold text-text-primary">
                       {showBalances
                         ? formatMoney(bal, card?.currency ?? baseCurrency)
                         : HIDDEN_BALANCE}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-text-secondary">
-                    Current balance
-                  </p>
+                  <p className="mt-1 text-xs text-text-secondary">Current balance</p>
                 </div>
 
                 <div className="min-w-0">
-                  <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-13">
+                  <label
+                    className="mb-1 block text-xs font-medium text-text-secondary"
+                    htmlFor="credit-cards-field-13"
+                  >
                     Date
                   </label>
                   <input
                     type="date"
                     value={payDate}
                     onChange={(e) => setPayDate(e.target.value)}
-                    className="w-full max-w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple [&::-webkit-datetime-edit]:min-w-0" id="credit-cards-field-13"
+                    className="w-full max-w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple [&::-webkit-datetime-edit]:min-w-0"
+                    id="credit-cards-field-13"
                   />
                 </div>
 
@@ -1662,7 +2151,31 @@ export function CreditCardsContent() {
                       Credit / Refund
                     </button>
                   </div>
-                  {paySource === "credit" && <RefundExpensePicker required={false} transactions={transactions.filter(t=>creditCardCharges.some(c=>c.card_id===payCardId && (c.id===t.linked_charge_id || c.linked_transaction_id===t.id)))} value={payRefundId} onChange={id=>{setPayRefundId(id); if(id) {const tx=transactions.find(t=>t.id===id)!; setPayAmount(String(Math.max(0,tx.amount-(tx.refunded_amount??0)))); setPayMode("custom");}}} currency={creditCards.find(c=>c.id===payCardId)?.currency || baseCurrency} amount={Number(payAmount)} />}
+                  {paySource === "credit" && (
+                    <RefundExpensePicker
+                      required={false}
+                      transactions={transactions.filter((t) =>
+                        creditCardCharges.some(
+                          (c) =>
+                            c.card_id === payCardId &&
+                            (c.id === t.linked_charge_id || c.linked_transaction_id === t.id)
+                        )
+                      )}
+                      value={payRefundId}
+                      onChange={(id) => {
+                        setPayRefundId(id);
+                        if (id) {
+                          const tx = transactions.find((t) => t.id === id)!;
+                          setPayAmount(String(Math.max(0, tx.amount - (tx.refunded_amount ?? 0))));
+                          setPayMode("custom");
+                        }
+                      }}
+                      currency={
+                        creditCards.find((c) => c.id === payCardId)?.currency || baseCurrency
+                      }
+                      amount={Number(payAmount)}
+                    />
+                  )}
                   {paySource === "account" && (
                     <select
                       value={payAccountId}
@@ -1731,9 +2244,7 @@ export function CreditCardsContent() {
             );
           })()}
           {payError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {payError}
-            </p>
+            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{payError}</p>
           )}
           <div className="flex gap-3 pt-2">
             <button
@@ -1756,7 +2267,11 @@ export function CreditCardsContent() {
       </Modal>
 
       {/* CC Balance Correction Modal */}
-      <Modal open={showCCCorrection} onClose={() => setShowCCCorrection(false)} title="Correct Card Balance">
+      <Modal
+        open={showCCCorrection}
+        onClose={() => setShowCCCorrection(false)}
+        title="Correct Card Balance"
+      >
         <form onSubmit={handleCCCorrection} className="space-y-4">
           {(() => {
             const card = creditCards.find((c) => c.id === ccCorrectionCardId);
@@ -1769,23 +2284,47 @@ export function CreditCardsContent() {
                 <div className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-text-secondary">{card.name}</span>
-                    <span className="text-lg font-bold text-text-primary">{showBalances ? formatMoney(current, card.currency) : HIDDEN_BALANCE}</span>
+                    <span className="text-lg font-bold text-text-primary">
+                      {showBalances ? formatMoney(current, card.currency) : HIDDEN_BALANCE}
+                    </span>
                   </div>
                   <p className="mt-1 text-xs text-text-secondary">Current computed balance</p>
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="credit-cards-field-14">Actual Balance ({card.currency})</label>
-                  <input type="number" step="0.01" min="0" value={ccCorrectionAmount} onChange={(e) => setCcCorrectionAmount(e.target.value)} placeholder={current.toFixed(2)}
-                    className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="credit-cards-field-14" />
+                  <label
+                    className="mb-1 block text-xs font-medium text-text-secondary"
+                    htmlFor="credit-cards-field-14"
+                  >
+                    Actual Balance ({card.currency})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={ccCorrectionAmount}
+                    onChange={(e) => setCcCorrectionAmount(e.target.value)}
+                    placeholder={current.toFixed(2)}
+                    className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                    id="credit-cards-field-14"
+                  />
                 </div>
                 {ccCorrectionAmount && !isNaN(target) && diff !== 0 && (
                   <>
-                    <div className={`rounded-xl border px-3 py-2 text-xs ${diff > 0 ? "border-red-500/30 bg-red-500/5 text-red-400" : "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"}`}>
-                      Adjustment: {diff > 0 ? "+" : ""}{formatMoney(diff, card.currency)} {diff > 0 ? "(adds charge)" : "(adds credit)"}
+                    <div
+                      className={`rounded-xl border px-3 py-2 text-xs ${diff > 0 ? "border-red-500/30 bg-red-500/5 text-red-400" : "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"}`}
+                    >
+                      Adjustment: {diff > 0 ? "+" : ""}
+                      {formatMoney(diff, card.currency)}{" "}
+                      {diff > 0 ? "(adds charge)" : "(adds credit)"}
                     </div>
                     {diff > 0 && (
                       <label className="flex items-center gap-2 text-xs text-text-secondary">
-                        <input type="checkbox" checked={ccCorrectionShowInExpenses} onChange={(e) => setCcCorrectionShowInExpenses(e.target.checked)} className="rounded border-border-subtle accent-accent-purple" />
+                        <input
+                          type="checkbox"
+                          checked={ccCorrectionShowInExpenses}
+                          onChange={(e) => setCcCorrectionShowInExpenses(e.target.checked)}
+                          className="rounded border-border-subtle accent-accent-purple"
+                        />
                         Show in expenses
                       </label>
                     )}
@@ -1795,8 +2334,18 @@ export function CreditCardsContent() {
             );
           })()}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowCCCorrection(false)} className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated">Cancel</button>
-            <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60">
+            <button
+              type="button"
+              onClick={() => setShowCCCorrection(false)}
+              className="flex-1 rounded-xl border border-border-subtle px-4 py-2.5 text-sm text-text-primary transition hover:bg-bg-elevated"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
+            >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Correct
             </button>

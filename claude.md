@@ -8,6 +8,10 @@ The user reviewed the UK demo and approved the base/interface and continuation: 
 
 Current absolute session lifetime is eight hours with server-side revocation. The user proposed easy return after idle with a PIN. Idle/PIN unlock is not implemented: design a server-enforced lock/re-authentication state separately, never a client-only cover or the old household PIN. No external AI credentials or configuration is authorized.
 
+## Main-app integration requirement
+
+The user explicitly reaffirmed adapting the original integrated MAIN APP/routes and schema. The standalone workspace is intermediate only. Keep the original feature-rich shell, existing account/transaction/card/goal/allocation/subscription/holding/dividend/reconciliation/snapshot/notification implementations and relationships. Connect them to server-derived ownership and transactional financial commands. Do not call the entire original app a demo or rebuild a separate debt product. No duplicate financial authorities: shared card identity, linked expenses, bank-funded repayments and statement anchors must stay consistent. See docs/uk/main-app-integration.md for the current vertical slice and unported adapters.
+
 ## Product intent
 
 Personal UK use first, future public multi-user service. Unified bank and debt accounts, transactions, budgets and future balances inspired by the discontinued Money Dashboard experience, easier to use and extended with debt/product/repayment detail. Preserve the new base's useful UI and workflows while proving persistence and correctness.

@@ -29,7 +29,13 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { getMonthRange, createTransaction, updateTransaction, createLinkedCreditCardCharge, computeCreditCardBalance } from "@/lib/money/queries";
+import {
+  getMonthRange,
+  createTransaction,
+  updateTransaction,
+  createLinkedCreditCardCharge,
+  computeCreditCardBalance,
+} from "@/lib/money/queries";
 import type { CurrencyCode, RecurrenceFrequency } from "@/lib/money/database.types";
 import { convertCurrency } from "@/lib/money/fx";
 import toast from "react-hot-toast";
@@ -41,11 +47,16 @@ import {
 } from "./components/money-charts";
 import { useBalanceVisibility } from "./balance-visibility-provider";
 import { computeGoalProgress } from "@/lib/money/goal-allocation";
-import { detectSpendingAnomalies, forecastCashFlow, type CashFlowForecast } from "@/lib/money/forecasting";
+import {
+  detectSpendingAnomalies,
+  forecastCashFlow,
+  type CashFlowForecast,
+} from "@/lib/money/forecasting";
 import { isIncludedInMonthlyTotals, monthlyAmount } from "@/lib/money/transaction-filters";
 import { TakeTourButton } from "./tour/take-tour-button";
 import { computeNetWorthBase } from "@/lib/money/net-worth";
 
+const AUTHENTICATED_APP = process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true";
 const UK_DEMO_ONLY = process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true";
 
 const AI_INSIGHTS_CACHE_KEY = "money:ai-insights:v2";
@@ -57,8 +68,26 @@ export function DashboardContent({
   demoMode?: boolean;
   routeBase?: string;
 }) {
-  const { accounts, transactions, goals, goalAccounts, holdings, dividends, subscriptions, creditCards, creditCardCharges, creditCardPayments, balances, settings, netWorthSnapshots, loading, error, refresh } =
-    useMoneyData({ demoMode });
+  const {
+    accounts,
+    transactions,
+    goals,
+    goalAccounts,
+    holdings,
+    dividends,
+    subscriptions,
+    creditCards,
+    creditCardCharges,
+    creditCardPayments,
+    balances,
+    settings,
+    netWorthSnapshots,
+    otherDebtTotal,
+    unresolvedDebtCount,
+    loading,
+    error,
+    refresh,
+  } = useMoneyData({ demoMode });
   const { fx, ready: fxReady } = useMoneyFx();
   const { showBalances } = useBalanceVisibility();
   const [saving, setSaving] = useState(false);
@@ -72,19 +101,29 @@ export function DashboardContent({
     if (clearPrevious) setAiInsights(null);
     try {
       const res = await fetch("/api/ai/insights");
-      if (!res.ok) { setAiInsightsLoading(false); return; }
+      if (!res.ok) {
+        setAiInsightsLoading(false);
+        return;
+      }
       const data = await res.json();
       if (data.insights) {
         setAiInsights(data.insights);
-        try { localStorage.setItem(AI_INSIGHTS_CACHE_KEY, JSON.stringify({ text: data.insights, ts: Date.now() })); } catch {}
+        try {
+          localStorage.setItem(
+            AI_INSIGHTS_CACHE_KEY,
+            JSON.stringify({ text: data.insights, ts: Date.now() })
+          );
+        } catch {}
       }
-    } catch { /* silent */ } finally {
+    } catch {
+      /* silent */
+    } finally {
       setAiInsightsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (UK_DEMO_ONLY) {
+    if (UK_DEMO_ONLY || AUTHENTICATED_APP) {
       setAiInsights(null);
       setAiInsightsLoading(false);
       return;
@@ -120,20 +159,34 @@ export function DashboardContent({
     setAiGreetingLoading(true);
     try {
       const res = await fetch("/api/ai/greeting");
-      if (!res.ok) { setAiGreetingLoading(false); return; }
+      if (!res.ok) {
+        setAiGreetingLoading(false);
+        return;
+      }
       const data = await res.json();
       if (data.greeting) {
         setAiGreeting(data.greeting);
-        try { localStorage.setItem("money:ai-greeting", JSON.stringify({ text: data.greeting, ts: Date.now() })); } catch {}
+        try {
+          localStorage.setItem(
+            "money:ai-greeting",
+            JSON.stringify({ text: data.greeting, ts: Date.now() })
+          );
+        } catch {}
       }
-    } catch { /* silent */ } finally {
+    } catch {
+      /* silent */
+    } finally {
       setAiGreetingLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (UK_DEMO_ONLY) {
-      setAiGreeting("Explore the UK preview using synthetic accounts and transactions. Changes reset when you reload.");
+    if (UK_DEMO_ONLY || AUTHENTICATED_APP) {
+      setAiGreeting(
+        AUTHENTICATED_APP
+          ? "Your accounts and activity, together. Review reported balances and pending changes before relying on an estimate."
+          : "Explore the UK preview using synthetic accounts and transactions. Changes reset when you reload."
+      );
       return;
     }
     if (demoMode) {
@@ -146,15 +199,25 @@ export function DashboardContent({
       const cached = localStorage.getItem("money:ai-greeting");
       if (cached) {
         const { text, ts } = JSON.parse(cached);
-        if (Date.now() - ts < 6 * 60 * 60 * 1000) { setAiGreeting(text); return; }
+        if (Date.now() - ts < 6 * 60 * 60 * 1000) {
+          setAiGreeting(text);
+          return;
+        }
       }
     } catch {}
     fetchAiGreeting();
   }, [demoMode, fetchAiGreeting]);
   const appBase = routeBase;
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
-  const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
-  const goalProgress = computeGoalProgress(goals, goalAccounts, balances, accounts, baseCurrency, fx);
+  const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
+  const goalProgress = computeGoalProgress(
+    goals,
+    goalAccounts,
+    balances,
+    accounts,
+    baseCurrency,
+    fx
+  );
   const getGoalCurrentInBase = (goalId: string) =>
     Object.entries(goalProgress.goalAccountCurrentByGoalId[goalId] ?? {}).reduce(
       (sum, [accountId, amount]) => {
@@ -170,7 +233,12 @@ export function DashboardContent({
   };
 
   // Fetch stock quotes for portfolio summary
-  const [stockQuotes, setStockQuotes] = useState<Record<string, { price: number; change: number; changePercent: number; name: string; currency: string }>>({});
+  const [stockQuotes, setStockQuotes] = useState<
+    Record<
+      string,
+      { price: number; change: number; changePercent: number; name: string; currency: string }
+    >
+  >({});
   const uniqueSymbols = useMemo(
     () => [...new Set(holdings.map((h) => h.symbol.toUpperCase()))],
     [holdings]
@@ -183,7 +251,9 @@ export function DashboardContent({
       const quotesRes = await fetch(`/api/stocks?symbols=${symbolsQuery}`);
       const data = await quotesRes.json();
       if (data.results) setStockQuotes(data.results);
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
   }, [symbolsQuery]);
 
   useEffect(() => {
@@ -197,18 +267,20 @@ export function DashboardContent({
   // load retries instead of locking in a missing/garbage day. Cron handles the
   // server-side schedule; this covers active users on days the cron might miss.
   useEffect(() => {
-    if (demoMode || loading || !fxReady) return;
+    if (demoMode || AUTHENTICATED_APP || loading || !fxReady) return;
     if (typeof window === "undefined") return;
     const today = nowEST().toISOString().slice(0, 10);
     const key = "money-snapshot-captured-v2";
     if (window.localStorage.getItem(key) === today) return;
     fetch("/api/snapshots/capture", { method: "POST" })
-      .then((res) => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         // Only mark done on a confirmed write; skipped/failed → retry next load.
         if (data && data.ok) window.localStorage.setItem(key, today);
       })
-      .catch(() => { /* silent — cron will catch up */ });
+      .catch(() => {
+        /* silent — cron will catch up */
+      });
   }, [demoMode, loading, fxReady]);
 
   useEffect(() => {
@@ -226,18 +298,11 @@ export function DashboardContent({
         rentDayReminder
       );
       if (thisMonth > todayReminder) return thisMonth;
-      return new Date(
-        todayReminder.getFullYear(),
-        todayReminder.getMonth() + 1,
-        rentDayReminder
-      );
+      return new Date(todayReminder.getFullYear(), todayReminder.getMonth() + 1, rentDayReminder);
     })();
     const daysUntilRentReminder = Math.max(
       0,
-      Math.ceil(
-        (nextRentDateReminder.getTime() - todayReminder.getTime()) /
-          (1000 * 60 * 60 * 24)
-      )
+      Math.ceil((nextRentDateReminder.getTime() - todayReminder.getTime()) / (1000 * 60 * 60 * 24))
     );
     const nextRentDateKeyReminder = nextRentDateReminder.toISOString().slice(0, 10);
 
@@ -265,9 +330,10 @@ export function DashboardContent({
     };
 
     if (daysUntilRentReminder <= rentReminderDays) {
-      const rentBody = daysUntilRentReminder === 0
-        ? `Rent is due today (${nextRentDateReminder.toLocaleDateString("en-GB")}).`
-        : `Rent is due in ${daysUntilRentReminder} day${daysUntilRentReminder !== 1 ? "s" : ""} (${nextRentDateReminder.toLocaleDateString("en-GB")}).`;
+      const rentBody =
+        daysUntilRentReminder === 0
+          ? `Rent is due today (${nextRentDateReminder.toLocaleDateString("en-GB")}).`
+          : `Rent is due in ${daysUntilRentReminder} day${daysUntilRentReminder !== 1 ? "s" : ""} (${nextRentDateReminder.toLocaleDateString("en-GB")}).`;
       notify(`rent:${nextRentDateKeyReminder}`, "Rent Reminder", rentBody);
     }
 
@@ -288,29 +354,54 @@ export function DashboardContent({
       const body = `${sub.name} bill is due ${dueLabel} (${dueDate.toLocaleDateString("en-GB")}).`;
       notify(`sub:${sub.id}:${sub.next_billing}`, "Bill Reminder", body);
     }
-  }, [loading, error, settings?.rent_day, settings?.rent_reminder_days, settings?.bill_reminder_days, subscriptions]);
+  }, [
+    loading,
+    error,
+    settings?.rent_day,
+    settings?.rent_reminder_days,
+    settings?.bill_reminder_days,
+    subscriptions,
+  ]);
 
-  const portfolioPricesMissing = holdings.some(h => !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()) && !(stockQuotes[h.symbol.toUpperCase()]?.price > 0));
-  const portfolioMarketValueBase = holdings.reduce((sum, h) => {
+  const portfolioPricesMissing = holdings.some(
+    (h) =>
+      !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()) &&
+      !(stockQuotes[h.symbol.toUpperCase()]?.price > 0)
+  );
+  const investmentCashBase = AUTHENTICATED_APP
+    ? accounts
+        .filter((a) => a.type === "investing")
+        .reduce(
+          (sum, a) => sum + convertCurrency(balances[a.id] || 0, a.currency, baseCurrency, fx),
+          0
+        )
+    : 0;
+  const portfolioHoldings = AUTHENTICATED_APP
+    ? holdings.filter((h) => !["CASH", "CASHCAD"].includes(h.symbol.toUpperCase()))
+    : holdings;
+  const portfolioMarketValueBase = portfolioHoldings.reduce((sum, h) => {
     const sym = h.symbol.toUpperCase();
     const quote = stockQuotes[sym];
     const rawCur = sym === "CASH" ? "USD" : sym === "CASHCAD" ? "CAD" : (quote?.currency ?? "USD");
     const quoteCurrency: CurrencyCode =
-      rawCur === "GBP" || rawCur === "EUR" || rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
+      rawCur === "GBP" ||
+      rawCur === "EUR" ||
+      rawCur === "CAD" ||
+      rawCur === "USD" ||
+      rawCur === "EGP"
+        ? rawCur
+        : "USD";
     const price = sym === "CASH" || sym === "CASHCAD" ? 1 : (quote?.price ?? 0);
     return sum + h.shares * convertCurrency(price, quoteCurrency, baseCurrency, fx);
-  }, 0);
+  }, investmentCashBase);
 
   const totalDividendsBase = dividends
     .filter((d) => !d.reinvested)
-    .reduce(
-      (s, d) => s + convertCurrency(d.amount, d.currency, baseCurrency, fx),
-      0
-  );
+    .reduce((s, d) => s + convertCurrency(d.amount, d.currency, baseCurrency, fx), 0);
 
-  const portfolioCostBase = holdings.reduce(
+  const portfolioCostBase = portfolioHoldings.reduce(
     (s, h) => s + convertCurrency(h.cost_basis, h.cost_currency, baseCurrency, fx),
-    0
+    investmentCashBase
   );
 
   const portfolioGainBase = portfolioMarketValueBase - portfolioCostBase;
@@ -321,19 +412,35 @@ export function DashboardContent({
     const quote = stockQuotes[sym];
     const rawCur = quote?.currency ?? "USD";
     const quoteCurrency: CurrencyCode =
-      rawCur === "GBP" || rawCur === "EUR" || rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
+      rawCur === "GBP" ||
+      rawCur === "EUR" ||
+      rawCur === "CAD" ||
+      rawCur === "USD" ||
+      rawCur === "EGP"
+        ? rawCur
+        : "USD";
     const dayChange = h.shares * (quote?.change ?? 0);
     return sum + convertCurrency(dayChange, quoteCurrency, baseCurrency, fx);
   }, 0);
 
   const topHoldings = (() => {
-    const grouped: Record<string, { sym: string; value: number; quote: (typeof stockQuotes)[string] | undefined }> = {};
+    const grouped: Record<
+      string,
+      { sym: string; value: number; quote: (typeof stockQuotes)[string] | undefined }
+    > = {};
     for (const h of holdings) {
       const sym = h.symbol.toUpperCase();
       const quote = stockQuotes[sym];
-      const rawCur = sym === "CASH" ? "USD" : sym === "CASHCAD" ? "CAD" : (quote?.currency ?? "USD");
+      const rawCur =
+        sym === "CASH" ? "USD" : sym === "CASHCAD" ? "CAD" : (quote?.currency ?? "USD");
       const quoteCurrency: CurrencyCode =
-        rawCur === "GBP" || rawCur === "EUR" || rawCur === "CAD" || rawCur === "USD" || rawCur === "EGP" ? rawCur : "USD";
+        rawCur === "GBP" ||
+        rawCur === "EUR" ||
+        rawCur === "CAD" ||
+        rawCur === "USD" ||
+        rawCur === "EGP"
+          ? rawCur
+          : "USD";
       const price = sym === "CASH" || sym === "CASHCAD" ? 1 : (quote?.price ?? 0);
       const valueBase = h.shares * convertCurrency(price, quoteCurrency, baseCurrency, fx);
       if (grouped[sym]) {
@@ -347,7 +454,6 @@ export function DashboardContent({
       .slice(0, 5);
   })();
 
-
   const today = nowEST();
   const { from, to } = getMonthRange(today);
   const monthlyTransactions = useMemo(
@@ -357,10 +463,11 @@ export function DashboardContent({
 
   // Recurring transactions (deduplicated) — exclude anything managed by the subscriptions feature
   const recurringItems = useMemo(() => {
-    const recurring = transactions.filter(t =>
-      t.is_recurring
-      && (t.type === "expense" || t.type === "income")
-      && !(t.notes && t.notes.includes("Subscription payment"))
+    const recurring = transactions.filter(
+      (t) =>
+        t.is_recurring &&
+        (t.type === "expense" || t.type === "income") &&
+        !(t.notes && t.notes.includes("Subscription payment"))
     );
     const groups = new Map<string, typeof recurring>();
     for (const tx of recurring) {
@@ -385,22 +492,24 @@ export function DashboardContent({
       return d.toISOString().slice(0, 10);
     };
 
-    return Array.from(groups.values()).map(txs => {
-      txs.sort((a, b) => b.date.localeCompare(a.date));
-      const latest = txs[0];
-      const periodStart = getPeriodStart(latest.recurrence);
-      const loggedThisPeriod = txs.some(t => t.date >= periodStart && t.date <= todayStr);
-      return { ...latest, loggedThisPeriod, occurrences: txs.length };
-    }).sort((a, b) => a.type.localeCompare(b.type) || b.amount - a.amount);
+    return Array.from(groups.values())
+      .map((txs) => {
+        txs.sort((a, b) => b.date.localeCompare(a.date));
+        const latest = txs[0];
+        const periodStart = getPeriodStart(latest.recurrence);
+        const loggedThisPeriod = txs.some((t) => t.date >= periodStart && t.date <= todayStr);
+        return { ...latest, loggedThisPeriod, occurrences: txs.length };
+      })
+      .sort((a, b) => a.type.localeCompare(b.type) || b.amount - a.amount);
   }, [transactions]);
 
   // AI: Spending anomaly detection
   const [dismissedAnomalies, setDismissedAnomalies] = useState<Set<string>>(new Set());
   const spendingAnomalies = useMemo(
-    () => detectSpendingAnomalies(
-      transactions,
-      (amount, currency) => convertCurrency(amount, currency as CurrencyCode, baseCurrency, fx)
-    ),
+    () =>
+      detectSpendingAnomalies(transactions, (amount, currency) =>
+        convertCurrency(amount, currency as CurrencyCode, baseCurrency, fx)
+      ),
     [transactions, baseCurrency, fx]
   );
   const visibleAnomalies = useMemo(
@@ -413,9 +522,21 @@ export function DashboardContent({
     if (!settings || transactions.length === 0) return null;
     const cashTotal = accounts
       .filter((a) => a.type === "checking")
-      .reduce((sum, a) => sum + convertCurrency(balances[a.id] || 0, a.currency, baseCurrency, fx), 0);
+      .reduce(
+        (sum, a) => sum + convertCurrency(balances[a.id] || 0, a.currency, baseCurrency, fx),
+        0
+      );
     return { transactions: monthlyTransactions, subscriptions, settings, cashTotal };
-  }, [transactions.length, monthlyTransactions, subscriptions, settings, accounts, balances, baseCurrency, fx]);
+  }, [
+    transactions.length,
+    monthlyTransactions,
+    subscriptions,
+    settings,
+    accounts,
+    balances,
+    baseCurrency,
+    fx,
+  ]);
 
   const cashForecast = useMemo<CashFlowForecast | null>(() => {
     if (!cashForecastInput) return null;
@@ -449,11 +570,21 @@ export function DashboardContent({
   // Compute summary values
   const cashTotalBase = accounts
     .filter((a) => a.type === "checking")
-    .reduce((sum, a) => sum + convertCurrency(balances[a.id] || 0, a.currency, baseCurrency, fx), 0);
+    .reduce(
+      (sum, a) => sum + convertCurrency(balances[a.id] || 0, a.currency, baseCurrency, fx),
+      0
+    );
 
   // Credit card debt is a liability — subtract it from net worth.
   const ccDebtBase = creditCards.reduce(
-    (sum, c) => sum + convertCurrency(computeCreditCardBalance(c.id, creditCardCharges, creditCardPayments), c.currency, baseCurrency, fx),
+    (sum, c) =>
+      sum +
+      convertCurrency(
+        computeCreditCardBalance(c.id, creditCardCharges, creditCardPayments, c),
+        c.currency,
+        baseCurrency,
+        fx
+      ),
     0
   );
 
@@ -461,13 +592,11 @@ export function DashboardContent({
     cashBase: cashTotalBase,
     holdingsBase: portfolioMarketValueBase,
     dividendsBase: totalDividendsBase,
-    creditCardDebtBase: ccDebtBase,
+    creditCardDebtBase: ccDebtBase + (otherDebtTotal || 0),
   });
 
   // This month
-  const monthTxs = monthlyTransactions.filter(
-    (t) => t.date >= from && t.date <= to
-  );
+  const monthTxs = monthlyTransactions.filter((t) => t.date >= from && t.date <= to);
   const monthIncomeBase = monthTxs
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + convertCurrency(monthlyAmount(t), t.currency, baseCurrency, fx), 0);
@@ -478,7 +607,9 @@ export function DashboardContent({
   const monthSavingsRate = savingsRate(monthIncomeBase, monthExpensesBase);
   const previousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const { from: previousFrom, to: previousTo } = getMonthRange(previousMonth);
-  const previousMonthTxs = monthlyTransactions.filter((t) => t.date >= previousFrom && t.date <= previousTo);
+  const previousMonthTxs = monthlyTransactions.filter(
+    (t) => t.date >= previousFrom && t.date <= previousTo
+  );
   const previousMonthIncomeBase = previousMonthTxs
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + convertCurrency(monthlyAmount(t), t.currency, baseCurrency, fx), 0);
@@ -494,7 +625,8 @@ export function DashboardContent({
   const displayName = settings?.display_name?.trim() || "there";
 
   const currentHour = today.getHours();
-  const greeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
+  const greeting =
+    currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
   const todayLabel = today.toLocaleDateString("en-GB", {
     weekday: "long",
     month: "short",
@@ -620,7 +752,9 @@ export function DashboardContent({
     timelineChips.push(`Salary ${formatRelativeDay(daysUntilPaycheck)}`);
   }
   if (timelineChips.length === 0) {
-    timelineChips.push(`No bills due in the next ${billReminderDays} day${billReminderDays !== 1 ? "s" : ""}`);
+    timelineChips.push(
+      `No bills due in the next ${billReminderDays} day${billReminderDays !== 1 ? "s" : ""}`
+    );
   }
 
   if (accounts.length === 0) {
@@ -632,7 +766,12 @@ export function DashboardContent({
           title="Welcome to your Finance Dashboard"
           description="Add your first account to start tracking balances, spending, and the things you’re saving for."
           action={
-            <Link href={`${appBase}/accounts` as any} className="money-primary-action inline-flex rounded-full px-5 py-3 text-sm font-semibold">Set up an account</Link>
+            <Link
+              href={`${appBase}/accounts` as any}
+              className="money-primary-action inline-flex rounded-full px-5 py-3 text-sm font-semibold"
+            >
+              Set up an account
+            </Link>
           }
         />
       </>
@@ -663,29 +802,40 @@ export function DashboardContent({
         }
       />
 
-      <section data-tour="greeting" className={`relative mb-7 overflow-hidden rounded-[2rem] border ${greetingTheme.card}`}>
+      <section
+        data-tour="greeting"
+        className={`relative mb-7 overflow-hidden rounded-[2rem] border ${greetingTheme.card}`}
+      >
         <div className={`pointer-events-none absolute inset-0 ${greetingTheme.wash}`} />
         <div className="money-hero relative p-6 sm:p-8 lg:p-8">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">{todayLabel}</p>
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${greetingTheme.chip}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">
+                  {todayLabel}
+                </p>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold ${greetingTheme.chip}`}
+                >
                   <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                  {greetingMode === "stable" ? "On track" : greetingMode === "bills_due" ? "Payment due" : "Needs attention"}
+                  {greetingMode === "stable"
+                    ? "On track"
+                    : greetingMode === "bills_due"
+                      ? "Payment due"
+                      : "Needs attention"}
                 </span>
               </div>
               <p className="mt-4 text-2xl font-semibold tracking-[-0.04em] text-text-primary sm:text-3xl">
                 {greeting}, <span className={greetingTheme.accent}>{displayName}</span>.
               </p>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-              {aiGreetingLoading ? (
-                <span className="inline-flex items-center gap-1.5 text-text-secondary/60">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Thinking...
-                </span>
-              ) : (
-                aiGreeting ?? fallbackToneLine()
-              )}
+                {aiGreetingLoading ? (
+                  <span className="inline-flex items-center gap-1.5 text-text-secondary/60">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Thinking...
+                  </span>
+                ) : (
+                  (aiGreeting ?? fallbackToneLine())
+                )}
               </p>
             </div>
             {isRentDueSoon && (
@@ -696,36 +846,62 @@ export function DashboardContent({
             )}
           </div>
 
-          <div data-tour="summary-stats" className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]">
+          <div
+            data-tour="summary-stats"
+            className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)]"
+          >
             <div className="flex min-h-[250px] flex-col justify-between rounded-[1.75rem] border border-border-subtle bg-bg-elevated p-6 text-text-primary sm:p-8">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">Total net worth</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-secondary">
+                  Total net worth
+                </p>
                 <p className="mt-4 break-words text-4xl font-semibold leading-none tracking-[-0.065em] sm:text-5xl lg:text-6xl">
                   {m(netWorthBase)}
                 </p>
               </div>
               <div className="mt-10 flex flex-wrap items-center gap-3 text-xs font-semibold">
-                <Link href={`${appBase}/reports` as any} className="rounded-full border border-border-subtle bg-[var(--card-bg)] px-4 py-2 text-text-primary transition hover:-translate-y-0.5">
+                <Link
+                  href={`${appBase}/reports` as any}
+                  className="rounded-full border border-border-subtle bg-[var(--card-bg)] px-4 py-2 text-text-primary transition hover:-translate-y-0.5"
+                >
                   View reports
                 </Link>
-                <span className="text-text-secondary">Cash + investments − credit cards</span>
+                <span className="text-text-secondary">Cash + investments − debts</span>
               </div>
             </div>
 
             <div className="money-hero-accounts grid grid-cols-2 gap-3 lg:grid-cols-1">
-              <Link href={`${appBase}/accounts` as any} className="money-interactive-surface flex min-h-[116px] items-center justify-between rounded-[1.5rem] bg-bg-elevated p-5">
+              <Link
+                href={`${appBase}/accounts` as any}
+                className="money-interactive-surface flex min-h-[116px] items-center justify-between rounded-[1.5rem] bg-bg-elevated p-5"
+              >
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">Available cash</p>
-                  <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-text-primary">{m(cashTotalBase)}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                    Available cash
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-text-primary">
+                    {m(cashTotalBase)}
+                  </p>
                 </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card-bg)] text-accent-purple"><Wallet className="h-5 w-5" /></span>
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card-bg)] text-accent-purple">
+                  <Wallet className="h-5 w-5" />
+                </span>
               </Link>
-              <Link href={`${appBase}/stocks` as any} className="money-interactive-surface flex min-h-[116px] items-center justify-between rounded-[1.5rem] bg-bg-elevated p-5">
+              <Link
+                href={`${appBase}/stocks` as any}
+                className="money-interactive-surface flex min-h-[116px] items-center justify-between rounded-[1.5rem] bg-bg-elevated p-5"
+              >
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">Investments</p>
-                  <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-text-primary">{m(portfolioMarketValueBase)}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                    Investments
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold tracking-[-0.04em] text-text-primary">
+                    {m(portfolioMarketValueBase)}
+                  </p>
                 </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card-bg)] text-accent-purple"><TrendingUp className="h-5 w-5" /></span>
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--card-bg)] text-accent-purple">
+                  <TrendingUp className="h-5 w-5" />
+                </span>
               </Link>
             </div>
           </div>
@@ -733,36 +909,48 @@ export function DashboardContent({
           <div className="money-month-summary mt-4 grid overflow-hidden rounded-[1.5rem] border border-border-subtle bg-[var(--card-bg)] sm:grid-cols-3">
             <div className="p-5 sm:border-r sm:border-border-subtle">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
-                <span className="h-2 w-2 rounded-full bg-[var(--status-positive)]" /> Income this month
+                <span className="h-2 w-2 rounded-full bg-[var(--status-positive)]" /> Income this
+                month
               </div>
-              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-text-primary">{m(monthIncomeBase)}</p>
+              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-text-primary">
+                {m(monthIncomeBase)}
+              </p>
             </div>
             <div className="border-t border-border-subtle p-5 sm:border-r sm:border-t-0">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
-                <span className="h-2 w-2 rounded-full bg-[var(--status-negative)]" /> Spending this month
+                <span className="h-2 w-2 rounded-full bg-[var(--status-negative)]" /> Spending this
+                month
               </div>
-              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-text-primary">{m(monthExpensesBase)}</p>
+              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-text-primary">
+                {m(monthExpensesBase)}
+              </p>
             </div>
             <div className="border-t border-border-subtle p-5 sm:border-t-0">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.1em] text-text-secondary">
                 <span className="h-2 w-2 rounded-full bg-accent-purple" /> Saved this month
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <p className="text-xl font-semibold tracking-[-0.035em] text-text-primary">{m(monthSavingsBase)}</p>
-                {showBalances && monthSavingsRate !== null && <span className="text-xs font-semibold text-accent-purple">{monthSavingsRate.toFixed(0)}%</span>}
+                <p className="text-xl font-semibold tracking-[-0.035em] text-text-primary">
+                  {m(monthSavingsBase)}
+                </p>
+                {showBalances && monthSavingsRate !== null && (
+                  <span className="text-xs font-semibold text-accent-purple">
+                    {monthSavingsRate.toFixed(0)}%
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-              {timelineChips.map((chip, index) => (
-                <span
-                  key={`${chip}-${index}`}
-                  className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-medium ${greetingTheme.chip}`}
-                >
-                  {chip}
-                </span>
-              ))}
+            {timelineChips.map((chip, index) => (
+              <span
+                key={`${chip}-${index}`}
+                className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[11px] font-medium ${greetingTheme.chip}`}
+              >
+                {chip}
+              </span>
+            ))}
           </div>
         </div>
       </section>
@@ -781,9 +969,11 @@ export function DashboardContent({
             >
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
               <span className="flex-1">
-                <strong>{a.category}</strong> spending is{" "}
-                <strong>{a.ratio}x</strong> your 3-month average
-                {showBalances ? ` (${formatMoney(a.currentMonthSpend, baseCurrency)} vs avg ${formatMoney(a.averageSpend, baseCurrency)})` : ""}
+                <strong>{a.category}</strong> spending is <strong>{a.ratio}x</strong> your 3-month
+                average
+                {showBalances
+                  ? ` (${formatMoney(a.currentMonthSpend, baseCurrency)} vs avg ${formatMoney(a.averageSpend, baseCurrency)})`
+                  : ""}
               </span>
               <button
                 onClick={() => setDismissedAnomalies((prev) => new Set([...prev, a.category]))}
@@ -797,15 +987,31 @@ export function DashboardContent({
         </div>
       )}
 
+      {unresolvedDebtCount > 0 && (
+        <div role="note" className="mb-4 rounded-xl border border-amber-300 p-4">
+          {unresolvedDebtCount} debt account(s) need reconciliation and are excluded from the
+          displayed debt/net-worth estimate.{" "}
+          <Link href="/debts" className="underline">
+            Review debts
+          </Link>
+        </div>
+      )}
       {/* AI Insights card */}
-      {(UK_DEMO_ONLY || aiInsights || aiInsightsLoading) && (
-        <div data-tour="ai-insights" className="money-surface mb-5 p-6 animate-in fade-in duration-500">
+      {(UK_DEMO_ONLY || AUTHENTICATED_APP || aiInsights || aiInsightsLoading) && (
+        <div
+          data-tour="ai-insights"
+          className="money-surface mb-5 p-6 animate-in fade-in duration-500"
+        >
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-bg-elevated text-accent-purple"><BarChart3 className="h-4 w-4" /></span>
-              <h3 className="text-sm font-semibold text-text-primary">{UK_DEMO_ONLY ? "AI integrations disabled" : "AI Insights"}</h3>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-bg-elevated text-accent-purple">
+                <BarChart3 className="h-4 w-4" />
+              </span>
+              <h3 className="text-sm font-semibold text-text-primary">
+                {UK_DEMO_ONLY || AUTHENTICATED_APP ? "AI integrations disabled" : "AI Insights"}
+              </h3>
             </div>
-            {!UK_DEMO_ONLY && (aiInsights || aiInsightsLoading) && (
+            {!UK_DEMO_ONLY && !AUTHENTICATED_APP && (aiInsights || aiInsightsLoading) && (
               <button
                 onClick={() => fetchAiInsights(true)}
                 disabled={aiInsightsLoading}
@@ -815,15 +1021,24 @@ export function DashboardContent({
               </button>
             )}
           </div>
-          {UK_DEMO_ONLY ? (
-            <p className="mt-2 text-sm leading-relaxed text-text-secondary">This preview does not generate financial advice or send account data to an AI provider. AI features need a separate privacy and product review before use.</p>
+          {UK_DEMO_ONLY || AUTHENTICATED_APP ? (
+            <p className="mt-2 text-sm leading-relaxed text-text-secondary">
+              This preview does not generate financial advice or send account data to an AI
+              provider. AI features need a separate privacy and product review before use.
+            </p>
           ) : aiInsights ? (
             <p className="mt-2 text-sm leading-relaxed text-text-secondary whitespace-pre-line">
-              {aiInsights.split(/(\$?\d[\d,]*\.?\d*%?|\bCA\$[\d,]+\.?\d*|\b\d+%)/g).map((part, i) =>
-                /^\$?\d[\d,]*\.?\d*%?$|^CA\$[\d,]+\.?\d*$|^\d+%$/.test(part)
-                  ? <span key={i} className="font-semibold text-text-primary">{part}</span>
-                  : part
-              )}
+              {aiInsights
+                .split(/(\$?\d[\d,]*\.?\d*%?|\bCA\$[\d,]+\.?\d*|\b\d+%)/g)
+                .map((part, i) =>
+                  /^\$?\d[\d,]*\.?\d*%?$|^CA\$[\d,]+\.?\d*$|^\d+%$/.test(part) ? (
+                    <span key={i} className="font-semibold text-text-primary">
+                      {part}
+                    </span>
+                  ) : (
+                    part
+                  )
+                )}
             </p>
           ) : (
             <div className="mt-3 space-y-2.5">
@@ -866,16 +1081,24 @@ export function DashboardContent({
         const isNearBudget = budgetPct >= 80 && !isOverBudget;
         // Category breakdown for this month's expenses (excluding rent)
         const catMap: Record<string, number> = {};
-        for (const tx of monthTxs.filter((t) => t.type === "expense" && t.category?.toLowerCase() !== "rent")) {
+        for (const tx of monthTxs.filter(
+          (t) => t.type === "expense" && t.category?.toLowerCase() !== "rent"
+        )) {
           const cat = tx.category || "Other";
-          catMap[cat] = (catMap[cat] || 0) + convertCurrency(monthlyAmount(tx), tx.currency, baseCurrency, fx);
+          catMap[cat] =
+            (catMap[cat] || 0) + convertCurrency(monthlyAmount(tx), tx.currency, baseCurrency, fx);
         }
         const catBreakdown = Object.entries(catMap)
           .sort(([, a], [, b]) => b - a)
           .map(([name, amount]) => ({ name, amount }));
         const BUDGET_CAT_COLORS: Record<string, string> = {
-          Food: "bg-[#d4875f]", Transport: "bg-[#6581c3]", Bills: "bg-[#8072b2]",
-          Fun: "bg-[#bc7297]", Health: "bg-[#4f8f7e]", "Personal Care": "bg-[#966c98]", Other: "bg-[#7d8490]",
+          Food: "bg-[#d4875f]",
+          Transport: "bg-[#6581c3]",
+          Bills: "bg-[#8072b2]",
+          Fun: "bg-[#bc7297]",
+          Health: "bg-[#4f8f7e]",
+          "Personal Care": "bg-[#966c98]",
+          Other: "bg-[#7d8490]",
         };
         return (
           <div className="money-surface mt-10 p-6">
@@ -885,14 +1108,22 @@ export function DashboardContent({
                 <h2 className="text-lg font-semibold text-text-primary">Monthly Budget</h2>
               </div>
               <span className="text-xs text-text-secondary">
-                {showBalances ? `${formatMoney(monthExpensesExRent, baseCurrency)} / ${formatMoney(budgetExRent, baseCurrency)}` : HIDDEN_BALANCE}
+                {showBalances
+                  ? `${formatMoney(monthExpensesExRent, baseCurrency)} / ${formatMoney(budgetExRent, baseCurrency)}`
+                  : HIDDEN_BALANCE}
               </span>
             </div>
             <p className="text-[10px] text-text-secondary mb-2">Excluding rent</p>
             <ProgressBar
               value={monthExpensesExRent}
               max={budgetExRent}
-              color={isOverBudget ? "bg-[var(--status-negative)]" : isNearBudget ? "bg-[var(--status-warning)]" : "bg-[var(--status-positive)]"}
+              color={
+                isOverBudget
+                  ? "bg-[var(--status-negative)]"
+                  : isNearBudget
+                    ? "bg-[var(--status-warning)]"
+                    : "bg-[var(--status-positive)]"
+              }
             />
             {isOverBudget && (
               <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-400">
@@ -910,7 +1141,9 @@ export function DashboardContent({
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-bg-elevated px-3 py-1.5">
               <div className="h-2 w-2 rounded-full bg-red-500" />
               <span className="text-[10px] text-text-secondary">Rent</span>
-              <span className="text-[10px] font-semibold text-text-primary">{showBalances ? m(rentAmount) : HIDDEN_BALANCE}</span>
+              <span className="text-[10px] font-semibold text-text-primary">
+                {showBalances ? m(rentAmount) : HIDDEN_BALANCE}
+              </span>
               {rentPaidThisMonth ? (
                 <span className="ml-auto text-[10px] font-medium text-emerald-500">Paid</span>
               ) : (
@@ -922,8 +1155,13 @@ export function DashboardContent({
             {catBreakdown.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {catBreakdown.map(({ name, amount }) => (
-                  <div key={name} className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1">
-                    <div className={`h-2 w-2 rounded-full ${BUDGET_CAT_COLORS[name] || "bg-[#7d8490]"}`} />
+                  <div
+                    key={name}
+                    className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-bg-elevated px-2.5 py-1"
+                  >
+                    <div
+                      className={`h-2 w-2 rounded-full ${BUDGET_CAT_COLORS[name] || "bg-[#7d8490]"}`}
+                    />
                     <span className="text-[10px] text-text-secondary">{name}</span>
                     <span className="text-[10px] font-semibold text-text-primary">{m(amount)}</span>
                   </div>
@@ -934,31 +1172,42 @@ export function DashboardContent({
         );
       })()}
 
-
       {/* Recurring Transactions */}
       {recurringItems.length > 0 && (
         <details className="money-disclosure">
-          <summary>Recurring transactions<span className="ml-auto text-xs font-normal text-text-secondary">{recurringItems.length} regular payments</span></summary>
+          <summary>
+            Recurring transactions
+            <span className="ml-auto text-xs font-normal text-text-secondary">
+              {recurringItems.length} regular payments
+            </span>
+          </summary>
           <div className="money-section-heading">
             <div className="flex items-center gap-2">
               <Repeat className="h-4 w-4 text-accent-purple" />
               <h2 className="text-lg font-semibold text-text-primary">Recurring Transactions</h2>
             </div>
             <span className="text-[10px] text-text-secondary">
-              {recurringItems.filter(i => i.loggedThisPeriod).length}/{recurringItems.length} logged this period
+              {recurringItems.filter((i) => i.loggedThisPeriod).length}/{recurringItems.length}{" "}
+              logged this period
             </span>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            {recurringItems.map(item => (
+            {recurringItems.map((item) => (
               <div key={item.id} className="money-row flex items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={`h-2 w-2 rounded-full flex-shrink-0 ${item.type === "income" ? "bg-[var(--status-positive)]" : ({ Food: "bg-[#d4875f]", Transport: "bg-[#6581c3]", Bills: "bg-[#8072b2]", Rent: "bg-[#c45f5f]", Fun: "bg-[#bc7297]", Health: "bg-[#4f8f7e]", "Personal Care": "bg-[#966c98]" }[item.category || ""] || "bg-[#7d8490]")}`} />
+                  <div
+                    className={`h-2 w-2 rounded-full flex-shrink-0 ${item.type === "income" ? "bg-[var(--status-positive)]" : { Food: "bg-[#d4875f]", Transport: "bg-[#6581c3]", Bills: "bg-[#8072b2]", Rent: "bg-[#c45f5f]", Fun: "bg-[#bc7297]", Health: "bg-[#4f8f7e]", "Personal Care": "bg-[#966c98]" }[item.category || ""] || "bg-[#7d8490]"}`}
+                  />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-text-primary truncate">
                       {item.merchant || item.category || "Unknown"}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className={`text-[10px] ${item.type === "income" ? "text-emerald-400" : "text-text-secondary"}`}>{item.type === "income" ? "Income" : "Expense"}</span>
+                      <span
+                        className={`text-[10px] ${item.type === "income" ? "text-emerald-400" : "text-text-secondary"}`}
+                      >
+                        {item.type === "income" ? "Income" : "Expense"}
+                      </span>
                       {item.recurrence && (
                         <span className="rounded bg-accent-purple/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-purple brightness-125">
                           {item.recurrence}
@@ -973,7 +1222,9 @@ export function DashboardContent({
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`text-sm font-semibold ${item.type === "income" ? "text-emerald-400" : "text-text-primary"}`}>
+                  <span
+                    className={`text-sm font-semibold ${item.type === "income" ? "text-emerald-400" : "text-text-primary"}`}
+                  >
                     {showBalances ? formatMoney(item.amount, item.currency) : HIDDEN_BALANCE}
                   </span>
                   <button
@@ -981,12 +1232,31 @@ export function DashboardContent({
                       setSaving(true);
                       try {
                         if (item.linked_charge_id) {
-                          const charge = creditCardCharges.find((c) => c.id === item.linked_charge_id);
-                          const card = charge ? creditCards.find((c) => c.id === charge.card_id) : null;
+                          const charge = creditCardCharges.find(
+                            (c) => c.id === item.linked_charge_id
+                          );
+                          const card = charge
+                            ? creditCards.find((c) => c.id === charge.card_id)
+                            : null;
                           if (charge && card) {
                             await createLinkedCreditCardCharge(
-                              { card_id: card.id, date: todayEST(), amount: charge.amount, merchant: charge.merchant, category: charge.category, notes: charge.notes },
-                              { currency: card.currency, cardName: card.name, personal_share_percent: item.personal_share_percent ?? 100, shared_with: item.shared_with ?? null, exclude_from_monthly: item.exclude_from_monthly, is_recurring: true, recurrence: item.recurrence }
+                              {
+                                card_id: card.id,
+                                date: todayEST(),
+                                amount: charge.amount,
+                                merchant: charge.merchant,
+                                category: charge.category,
+                                notes: charge.notes,
+                              },
+                              {
+                                currency: card.currency,
+                                cardName: card.name,
+                                personal_share_percent: item.personal_share_percent ?? 100,
+                                shared_with: item.shared_with ?? null,
+                                exclude_from_monthly: item.exclude_from_monthly,
+                                is_recurring: true,
+                                recurrence: item.recurrence,
+                              }
                             );
                           }
                         } else {
@@ -999,7 +1269,9 @@ export function DashboardContent({
                             account_id: item.account_id,
                             merchant: item.merchant,
                             notes: null,
-                            personal_share_percent: item.personal_share_percent ?? 100, shared_with: item.shared_with ?? null, exclude_from_monthly: item.exclude_from_monthly,
+                            personal_share_percent: item.personal_share_percent ?? 100,
+                            shared_with: item.shared_with ?? null,
+                            exclude_from_monthly: item.exclude_from_monthly,
                             is_recurring: true,
                             recurrence: item.recurrence as RecurrenceFrequency | null,
                             from_account_id: null,
@@ -1046,69 +1318,72 @@ export function DashboardContent({
         </details>
       )}
 
-
       {/* Goal progress */}
       {goals.length > 0 && (
-      <div className="mt-10">
-        <div className="money-section-heading">
-          <h2 className="text-text-primary">Goal Progress</h2>
-          <Link href={`${appBase}/goals` as any} className="text-xs font-semibold text-text-secondary transition hover:text-text-primary">View goals →</Link>
-        </div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {goals.map((goal) => {
-            const currentAmt = getGoalCurrentInBase(goal.id);
-            const target = goal.target_amount;
-            return (
-              <div
-                key={goal.id}
-                className="money-surface p-6"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-text-primary">{goal.name}</p>
-                  <p className="text-xs text-text-secondary">
-                    {showBalances ? formatMoney(currentAmt, baseCurrency) : HIDDEN_BALANCE}
-                    {target ? ` / ${showBalances ? formatMoney(target, baseCurrency) : HIDDEN_BALANCE}` : ""}
-                  </p>
+        <div className="mt-10">
+          <div className="money-section-heading">
+            <h2 className="text-text-primary">Goal Progress</h2>
+            <Link
+              href={`${appBase}/goals` as any}
+              className="text-xs font-semibold text-text-secondary transition hover:text-text-primary"
+            >
+              View goals →
+            </Link>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {goals.map((goal) => {
+              const currentAmt = getGoalCurrentInBase(goal.id);
+              const target = goal.target_amount;
+              return (
+                <div key={goal.id} className="money-surface p-6">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-text-primary">{goal.name}</p>
+                    <p className="text-xs text-text-secondary">
+                      {showBalances ? formatMoney(currentAmt, baseCurrency) : HIDDEN_BALANCE}
+                      {target
+                        ? ` / ${showBalances ? formatMoney(target, baseCurrency) : HIDDEN_BALANCE}`
+                        : ""}
+                    </p>
+                  </div>
+                  {target ? (
+                    <ProgressBar
+                      value={currentAmt}
+                      max={target}
+                      className="mt-3"
+                      color={currentAmt >= target ? "bg-emerald-500" : "bg-accent-purple"}
+                    />
+                  ) : (
+                    <p className="mt-2 text-xs text-text-secondary">
+                      No cap — {m(currentAmt)} invested
+                    </p>
+                  )}
                 </div>
-                {target ? (
-                  <ProgressBar
-                    value={currentAmt}
-                    max={target}
-                    className="mt-3"
-                    color={
-                      currentAmt >= target
-                        ? "bg-emerald-500"
-                        : "bg-accent-purple"
-                    }
-                  />
-                ) : (
-                  <p className="mt-2 text-xs text-text-secondary">
-                    No cap — {m(currentAmt)} invested
-                  </p>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Quick account balances */}
       <div className="mt-10">
         <div className="money-section-heading">
           <h2 className="text-text-primary">Account Balances</h2>
-          <Link href={`${appBase}/accounts` as any} className="text-xs font-semibold text-text-secondary transition hover:text-text-primary">Manage accounts →</Link>
+          <Link
+            href={`${appBase}/accounts` as any}
+            className="text-xs font-semibold text-text-secondary transition hover:text-text-primary"
+          >
+            Manage accounts →
+          </Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {accounts.map((acct) => {
             const bal = balances[acct.id] || 0;
             const isNative = acct.currency === baseCurrency;
-            const convertedBal = isNative ? bal : convertCurrency(bal, acct.currency, baseCurrency, fx);
+            const convertedBal = isNative
+              ? bal
+              : convertCurrency(bal, acct.currency, baseCurrency, fx);
             return (
-              <div
-                key={acct.id}
-                className="money-row flex items-center justify-between px-4 py-4"
-              >
+              <div key={acct.id} className="money-row flex items-center justify-between px-4 py-4">
                 <div className="flex items-center gap-3">
                   <div
                     className={`h-2 w-2 rounded-full ${
@@ -1153,41 +1428,54 @@ export function DashboardContent({
             />
             <StatCard
               title="Total Gain/Loss"
-              value={portfolioPricesMissing ? "Unavailable" : showBalances ? `${portfolioGainBase >= 0 ? "+" : ""}${formatMoney(portfolioGainBase, baseCurrency)}` : HIDDEN_BALANCE}
+              value={
+                portfolioPricesMissing
+                  ? "Unavailable"
+                  : showBalances
+                    ? `${portfolioGainBase >= 0 ? "+" : ""}${formatMoney(portfolioGainBase, baseCurrency)}`
+                    : HIDDEN_BALANCE
+              }
               subtitle={
                 !portfolioPricesMissing && showBalances && portfolioCostBase > 0
                   ? `${portfolioGainBase >= 0 ? "+" : ""}${((portfolioGainBase / portfolioCostBase) * 100).toFixed(1)}%`
                   : undefined
               }
-              icon={portfolioGainBase >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
+              icon={
+                portfolioGainBase >= 0 ? (
+                  <TrendingUp className="h-5 w-5" />
+                ) : (
+                  <TrendingDown className="h-5 w-5" />
+                )
+              }
             />
             <StatCard
               title="Today's Change"
-              value={portfolioPricesMissing ? "Unavailable" : showBalances ? `${portfolioDayChangeBase >= 0 ? "+" : ""}${formatMoney(portfolioDayChangeBase, baseCurrency)}` : HIDDEN_BALANCE}
+              value={
+                portfolioPricesMissing
+                  ? "Unavailable"
+                  : showBalances
+                    ? `${portfolioDayChangeBase >= 0 ? "+" : ""}${formatMoney(portfolioDayChangeBase, baseCurrency)}`
+                    : HIDDEN_BALANCE
+              }
               icon={<DollarSign className="h-5 w-5" />}
             />
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {topHoldings.map((h) => (
-              <div
-                key={h.sym}
-                className="money-row flex items-center justify-between px-4 py-4"
-              >
+              <div key={h.sym} className="money-row flex items-center justify-between px-4 py-4">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-semibold text-text-primary">
-                    {h.sym}
-                  </span>
+                  <span className="font-mono text-sm font-semibold text-text-primary">{h.sym}</span>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-text-primary">
-                    {!["CASH", "CASHCAD"].includes(h.sym) && !(h.quote?.price && h.quote.price > 0) ? "Awaiting price" : m(h.value)}
+                    {!["CASH", "CASHCAD"].includes(h.sym) && !(h.quote?.price && h.quote.price > 0)
+                      ? "Awaiting price"
+                      : m(h.value)}
                   </p>
                   {showBalances && h.quote && (
                     <p
                       className={`text-[10px] font-medium ${
-                        h.quote.changePercent >= 0
-                          ? "text-emerald-400"
-                          : "text-red-400"
+                        h.quote.changePercent >= 0 ? "text-emerald-400" : "text-red-400"
                       }`}
                     >
                       {h.quote.changePercent >= 0 ? "+" : ""}
@@ -1209,22 +1497,36 @@ export function DashboardContent({
               <TrendingUp className="h-4 w-4 text-accent-purple" />
               90-Day Cash Flow Forecast
             </h3>
-            <span className={`rounded-full px-3 py-1 text-[10px] font-semibold ${cashForecast.monthlyNet >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "bg-red-500/10 text-red-600 dark:text-red-300"}`}>
+            <span
+              className={`rounded-full px-3 py-1 text-[10px] font-semibold ${cashForecast.monthlyNet >= 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "bg-red-500/10 text-red-600 dark:text-red-300"}`}
+            >
               {cashForecast.monthlyNet >= 0 ? "Positive trajectory" : "Negative trajectory"}
             </span>
           </div>
           <div className="mt-5 grid overflow-hidden rounded-[1.25rem] border border-border-subtle sm:grid-cols-3">
             <div className="p-5 sm:border-r sm:border-border-subtle">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">Avg monthly income</p>
-              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-emerald-600 dark:text-emerald-300">{m(cashForecast.monthlyIncome)}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                Avg monthly income
+              </p>
+              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-emerald-600 dark:text-emerald-300">
+                {m(cashForecast.monthlyIncome)}
+              </p>
             </div>
             <div className="border-t border-border-subtle p-5 sm:border-r sm:border-t-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">Avg monthly expenses</p>
-              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-[var(--status-negative)]">{m(cashForecast.monthlyExpenses)}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                Avg monthly expenses
+              </p>
+              <p className="mt-2 text-xl font-semibold tracking-[-0.035em] text-[var(--status-negative)]">
+                {m(cashForecast.monthlyExpenses)}
+              </p>
             </div>
             <div className="border-t border-border-subtle p-5 sm:border-t-0">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">Monthly net</p>
-              <p className={`mt-2 text-xl font-semibold tracking-[-0.035em] ${cashForecast.monthlyNet >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-red-500"}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-text-secondary">
+                Monthly net
+              </p>
+              <p
+                className={`mt-2 text-xl font-semibold tracking-[-0.035em] ${cashForecast.monthlyNet >= 0 ? "text-emerald-600 dark:text-emerald-300" : "text-red-500"}`}
+              >
                 {m(cashForecast.monthlyNet)}
               </p>
             </div>
@@ -1234,8 +1536,12 @@ export function DashboardContent({
               .filter((p) => p.label)
               .map((p) => (
                 <div key={p.label} className="money-row px-4 py-3">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">{p.label}</p>
-                  <p className={`text-sm font-bold ${p.balance >= 0 ? "text-text-primary" : "text-red-400"}`}>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-text-secondary">
+                    {p.label}
+                  </p>
+                  <p
+                    className={`text-sm font-bold ${p.balance >= 0 ? "text-text-primary" : "text-red-400"}`}
+                  >
                     {m(p.balance)}
                   </p>
                   <p className="text-[10px] text-text-secondary">{p.date}</p>
@@ -1246,28 +1552,46 @@ export function DashboardContent({
       )}
 
       <details className="money-disclosure" data-tour="charts">
-        <summary>Explore charts &amp; trends<span className="ml-auto text-xs font-normal text-text-secondary">Your money over time</span></summary>
-      {/* Charts */}
-      <div className="money-section-heading mt-10">
-        <h2 className="flex items-center gap-2 text-text-primary"><BarChart3 className="h-4 w-4 text-accent-purple" /> Charts &amp; Trends</h2>
-        <Link href={`${appBase}/reports` as any} className="text-xs font-semibold text-text-secondary transition hover:text-text-primary">Open reports →</Link>
-      </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <NetWorthChart baseCurrency={baseCurrency} netWorthSnapshots={netWorthSnapshots} />
-        <ExpensesByCategoryChart transactions={transactions} baseCurrency={baseCurrency} fx={fx} />
-        <IncomeVsExpensesChart transactions={monthlyTransactions} baseCurrency={baseCurrency} fx={fx} />
-        <GoalProgressChart
-          goals={goals.map((g) => ({
-            name: g.name,
-            current: getGoalCurrentInBase(g.id),
-            target: g.target_amount,
-          }))}
-          baseCurrency={baseCurrency}
-        />
-      </div>
+        <summary>
+          Explore charts &amp; trends
+          <span className="ml-auto text-xs font-normal text-text-secondary">
+            Your money over time
+          </span>
+        </summary>
+        {/* Charts */}
+        <div className="money-section-heading mt-10">
+          <h2 className="flex items-center gap-2 text-text-primary">
+            <BarChart3 className="h-4 w-4 text-accent-purple" /> Charts &amp; Trends
+          </h2>
+          <Link
+            href={`${appBase}/reports` as any}
+            className="text-xs font-semibold text-text-secondary transition hover:text-text-primary"
+          >
+            Open reports →
+          </Link>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <NetWorthChart baseCurrency={baseCurrency} netWorthSnapshots={netWorthSnapshots} />
+          <ExpensesByCategoryChart
+            transactions={transactions}
+            baseCurrency={baseCurrency}
+            fx={fx}
+          />
+          <IncomeVsExpensesChart
+            transactions={monthlyTransactions}
+            baseCurrency={baseCurrency}
+            fx={fx}
+          />
+          <GoalProgressChart
+            goals={goals.map((g) => ({
+              name: g.name,
+              current: getGoalCurrentInBase(g.id),
+              target: g.target_amount,
+            }))}
+            baseCurrency={baseCurrency}
+          />
+        </div>
       </details>
-
-      
     </>
   );
 }

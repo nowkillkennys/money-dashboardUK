@@ -121,6 +121,7 @@ export function ExpensesContent() {
 
   const expenseCategories = settings?.expense_categories;
   const autoCategorize = useCallback(async (merchantName: string, notesText?: string) => {
+    if (process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" || process.env.NEXT_PUBLIC_UK_DEMO_ONLY === "true") return;
     if (!merchantName.trim() && !(notesText?.trim())) return;
     if ((merchantName + (notesText || "")).trim().length < 2) return;
     setAutoCategorizePending(true);
@@ -211,7 +212,7 @@ export function ExpensesContent() {
 
   const fetchRunningBalance = useCallback(async (accountId: string) => {
     try {
-      const res = await fetch(`/api/running-balance?account_id=${accountId}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_AUTHENTICATED_APP === "true" ? "/api/workspace/running-balance" : "/api/running-balance"}?account_id=${accountId}`);
       if (!res.ok) { setRunningBalances({}); return; }
       const data = await res.json();
       const map: Record<string, number> = {};

@@ -7,6 +7,78 @@ import { Lock, KeyRound, Delete, Loader2, CircleDollarSign, ShieldCheck } from "
 const PIN_LENGTH = 6;
 
 export function LoginForm() {
+  const { credentialsMode, signInCredentials } = useAuth();
+  return credentialsMode ? <CredentialsLoginForm onSubmit={signInCredentials} /> : <PinLoginForm />;
+}
+
+export function CredentialsLoginForm({
+  onSubmit,
+}: {
+  onSubmit: (username: string, password: string) => Promise<void>;
+}) {
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
+      <p className="text-sm text-text-secondary">Money · Private local dashboard</p>
+      <h1 className="my-4 text-3xl font-semibold">Sign in</h1>
+      <p className="mb-6 text-sm text-text-secondary">
+        Use your local account. Accounts are provisioned by the administrator.
+      </p>
+      <form
+        className="space-y-4"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          const values = new FormData(event.currentTarget);
+          setBusy(true);
+          setError("");
+          try {
+            await onSubmit(String(values.get("username")), String(values.get("password")));
+          } catch (error) {
+            setError(error instanceof Error ? error.message : "Sign in failed");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="block">
+          Username
+          <input
+            className="money-input mt-1 w-full"
+            name="username"
+            autoComplete="username"
+            required
+            maxLength={64}
+          />
+        </label>
+        <label className="block">
+          Password
+          <input
+            className="money-input mt-1 w-full"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            required
+            maxLength={256}
+          />
+        </label>
+        <button className="money-btn-primary w-full" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+      {error && (
+        <p role="alert" className="mt-4 text-red-500">
+          {error}
+        </p>
+      )}
+      <a href="http://localhost:13021/demo" className="mt-6 text-sm underline">
+        Open the separate synthetic demo
+      </a>
+    </main>
+  );
+}
+
+function PinLoginForm() {
   const { signIn, setPin: setNewPin, pinExists } = useAuth();
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -138,12 +210,18 @@ export function LoginForm() {
             </span>
             <div>
               <p className="text-base font-semibold tracking-[-0.03em]">Money</p>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-55">Personal finance</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-55">
+                Personal finance
+              </p>
             </div>
           </div>
           <div className="relative z-10">
-            <p className="max-w-sm text-4xl font-semibold leading-[1.05] tracking-[-0.06em]">A clearer view of your money.</p>
-            <p className="mt-5 max-w-sm text-sm leading-6 opacity-60">Accounts, spending, investments, and goals—organized around the decisions that matter.</p>
+            <p className="max-w-sm text-4xl font-semibold leading-[1.05] tracking-[-0.06em]">
+              A clearer view of your money.
+            </p>
+            <p className="mt-5 max-w-sm text-sm leading-6 opacity-60">
+              Accounts, spending, investments, and goals—organized around the decisions that matter.
+            </p>
           </div>
           <div className="relative z-10 flex items-center gap-2 text-xs font-medium opacity-65">
             <ShieldCheck className="h-4 w-4" /> Your financial dashboard is PIN protected
@@ -160,7 +238,9 @@ export function LoginForm() {
               <div className="mb-5 hidden h-11 w-11 items-center justify-center rounded-full bg-bg-elevated text-accent-purple lg:flex">
                 <Icon className="h-5 w-5" />
               </div>
-              <h1 className="text-3xl font-semibold tracking-[-0.05em] text-text-primary">{title}</h1>
+              <h1 className="text-3xl font-semibold tracking-[-0.05em] text-text-primary">
+                {title}
+              </h1>
               <p className="mt-2 text-sm text-text-secondary">{subtitle}</p>
             </div>
 
@@ -181,7 +261,9 @@ export function LoginForm() {
             </div>
 
             {error && (
-              <p className="mb-4 rounded-xl bg-red-500/10 px-3 py-2 text-xs font-medium text-red-500">{error}</p>
+              <p className="mb-4 rounded-xl bg-red-500/10 px-3 py-2 text-xs font-medium text-red-500">
+                {error}
+              </p>
             )}
 
             {loading && (

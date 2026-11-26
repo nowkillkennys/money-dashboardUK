@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 export function proxy(request: NextRequest) {
   if (process.env.WORKSPACE_MODE === "authenticated") {
     const path = request.nextUrl.pathname;
+    if(path==='/api/stocks'&&request.method==='GET')return NextResponse.json({results:{},source:'offline-no-provider',live:false},{headers:{'Cache-Control':'no-store'}});
     if (
       path.startsWith("/api/workspace/") ||
       path === "/workspace" ||
@@ -17,7 +18,8 @@ export function proxy(request: NextRequest) {
       return NextResponse.json({ error: "Disabled in this workspace" }, { status: 403 });
     if (path.startsWith("/api/") || !["GET", "HEAD"].includes(request.method))
       return NextResponse.json({ error: "Legacy integrations are disabled" }, { status: 403 });
-    return NextResponse.redirect(new URL("/workspace", request.url));
+    if(path.startsWith('/demo'))return NextResponse.redirect(new URL('/',request.url));
+    return NextResponse.next();
   }
   if (process.env.UK_DEMO_ONLY !== "true")
     return NextResponse.json(

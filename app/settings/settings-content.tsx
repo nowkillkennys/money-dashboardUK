@@ -3,15 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMoneyData } from "../hooks/use-money-data";
 import { PageHeader, formatMoney, HIDDEN_BALANCE } from "../components/money-ui";
-import {
-  Loader2,
-  Save,
-  Check,
-  RotateCcw,
-  KeyRound,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { Loader2, Save, Check, RotateCcw, KeyRound, Eye, EyeOff } from "lucide-react";
 import {
   upsertSettings,
   setActivePlan,
@@ -20,11 +12,7 @@ import {
   deleteAllocationPlan,
   addGoalAccountAllocation,
 } from "@/lib/money/queries";
-import type {
-  CurrencyCode,
-  GreetingTone,
-  PaycheckFrequency,
-} from "@/lib/money/database.types";
+import type { CurrencyCode, GreetingTone, PaycheckFrequency } from "@/lib/money/database.types";
 import { Plus, Pencil, Trash2, X } from "lucide-react";
 import { useBalanceVisibility } from "../balance-visibility-provider";
 import { BackgroundNotificationSettings } from "../components/background-notification-settings";
@@ -71,7 +59,7 @@ export function SettingsContent() {
   const { settings, plans, accounts, goals, loading, refresh } = useMoneyData();
   const { showBalances } = useBalanceVisibility();
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
-  const m = (v: number) => showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE;
+  const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -86,9 +74,7 @@ export function SettingsContent() {
   const [paycheckFreq, setPaycheckFreq] = useState<PaycheckFrequency>("bi-weekly");
   const [displayName, setDisplayName] = useState("Amir");
   const [greetingTone, setGreetingTone] = useState<GreetingTone>("coach");
-  const [expenseCategories, setExpenseCategories] = useState<string[]>(
-    DEFAULT_EXPENSE_CATEGORIES
-  );
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(DEFAULT_EXPENSE_CATEGORIES);
   const [newExpenseCategory, setNewExpenseCategory] = useState("");
   const [subscriptionCategories, setSubscriptionCategories] = useState<string[]>(
     DEFAULT_SUBSCRIPTION_CATEGORIES
@@ -117,13 +103,9 @@ export function SettingsContent() {
       setPaycheckFreq(settings.paycheck_frequency);
       setDisplayName(settings.display_name || "Amir");
       setGreetingTone(settings.greeting_tone || "coach");
-      const loadedCategories = normalizeCategories(
-        settings.expense_categories ?? []
-      );
+      const loadedCategories = normalizeCategories(settings.expense_categories ?? []);
       setExpenseCategories(
-        loadedCategories.length > 0
-          ? loadedCategories
-          : DEFAULT_EXPENSE_CATEGORIES
+        loadedCategories.length > 0 ? loadedCategories : DEFAULT_EXPENSE_CATEGORIES
       );
       const loadedSubscriptionCategories = normalizeCategories(
         settings.subscription_categories ?? []
@@ -141,9 +123,7 @@ export function SettingsContent() {
     setSaved(false);
     try {
       const normalizedExpenseCategories = normalizeCategories(expenseCategories);
-      const normalizedSubscriptionCategories = normalizeCategories(
-        subscriptionCategories
-      );
+      const normalizedSubscriptionCategories = normalizeCategories(subscriptionCategories);
       const parsedRentReminderDays = parseInt(rentReminderDays, 10);
       const parsedBillReminderDays = parseInt(billReminderDays, 10);
       await upsertSettings({
@@ -203,7 +183,9 @@ export function SettingsContent() {
             onClick={handleSave}
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
-           aria-label="Save" title="Save">
+            aria-label="Save"
+            title="Save"
+          >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : saved ? (
@@ -216,19 +198,76 @@ export function SettingsContent() {
         }
       />
 
-      <nav aria-label="Settings sections" className="money-settings-nav"><a href="#settings-currency" onClick={() => { const target = document.getElementById("settings-currency"); if (target instanceof HTMLDetailsElement) target.open = true; }}>Currency</a><a href="#settings-personalization" onClick={() => { const target = document.getElementById("settings-personalization"); if (target instanceof HTMLDetailsElement) target.open = true; }}>AI Greeting Preferences</a><a href="#settings-expense-categories" onClick={() => { const target = document.getElementById("settings-expense-categories"); if (target instanceof HTMLDetailsElement) target.open = true; }}>Expense Categories</a><a href="#settings-reminders" onClick={() => { const target = document.getElementById("settings-reminders"); if (target instanceof HTMLDetailsElement) target.open = true; }}>Reminder Timing</a><a href="#settings-budget" onClick={() => { const target = document.getElementById("settings-budget"); if (target instanceof HTMLDetailsElement) target.open = true; }}>Budget & Paycheck</a></nav>
+      <nav aria-label="Settings sections" className="money-settings-nav">
+        <a
+          href="#settings-currency"
+          onClick={() => {
+            const target = document.getElementById("settings-currency");
+            if (target instanceof HTMLDetailsElement) target.open = true;
+          }}
+        >
+          Currency
+        </a>
+        <a
+          href="#settings-personalization"
+          onClick={() => {
+            const target = document.getElementById("settings-personalization");
+            if (target instanceof HTMLDetailsElement) target.open = true;
+          }}
+        >
+          AI Greeting Preferences
+        </a>
+        <a
+          href="#settings-expense-categories"
+          onClick={() => {
+            const target = document.getElementById("settings-expense-categories");
+            if (target instanceof HTMLDetailsElement) target.open = true;
+          }}
+        >
+          Expense Categories
+        </a>
+        <a
+          href="#settings-reminders"
+          onClick={() => {
+            const target = document.getElementById("settings-reminders");
+            if (target instanceof HTMLDetailsElement) target.open = true;
+          }}
+        >
+          Reminder Timing
+        </a>
+        <a
+          href="#settings-budget"
+          onClick={() => {
+            const target = document.getElementById("settings-budget");
+            if (target instanceof HTMLDetailsElement) target.open = true;
+          }}
+        >
+          Budget & Paycheck
+        </a>
+      </nav>
       <div className="space-y-8">
         {/* Currency */}
-        <details id="settings-currency" className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6" open><summary><h2 className="text-base font-semibold text-text-primary">Currency</h2></summary>
+        <details
+          id="settings-currency"
+          className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"
+          open
+        >
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Currency</h2>
+          </summary>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-1">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-1"
+              >
                 Base Currency
               </label>
               <select
                 value={baseCurrencyInput}
                 onChange={(e) => setBaseCurrencyInput(e.target.value as CurrencyCode)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-1"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-1"
               >
                 <option value="GBP">GBP</option>
                 <option value="EUR">EUR</option>
@@ -244,10 +283,19 @@ export function SettingsContent() {
         </details>
 
         {/* Greeting Preferences */}
-        <details id="settings-personalization" className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">AI Greeting Preferences</h2></summary>
+        <details
+          id="settings-personalization"
+          className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"
+        >
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">AI Greeting Preferences</h2>
+          </summary>
           <div className="space-y-4">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-2">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-2"
+              >
                 Display Name
               </label>
               <input
@@ -255,11 +303,15 @@ export function SettingsContent() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Amir"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-2"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-3">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-3"
+              >
                 AI Personality
               </label>
               <p className="mb-2 text-[11px] text-text-secondary">
@@ -293,14 +345,21 @@ export function SettingsContent() {
                 value={greetingTone}
                 onChange={(e) => setGreetingTone(e.target.value as GreetingTone)}
                 placeholder="e.g., friendly and casual, use Egyptian slang"
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-3"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-3"
               />
             </div>
           </div>
         </details>
 
         {/* Expense Categories */}
-        <details id="settings-expense-categories" className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Expense Categories</h2></summary>
+        <details
+          id="settings-expense-categories"
+          className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"
+        >
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Expense Categories</h2>
+          </summary>
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {expenseCategories.map((categoryName) => (
@@ -312,9 +371,7 @@ export function SettingsContent() {
                   <button
                     type="button"
                     onClick={() =>
-                      setExpenseCategories((prev) =>
-                        prev.filter((item) => item !== categoryName)
-                      )
+                      setExpenseCategories((prev) => prev.filter((item) => item !== categoryName))
                     }
                     className="rounded p-0.5 text-text-secondary transition hover:bg-red-500/10 hover:text-red-400"
                     title={`Remove ${categoryName}`}
@@ -337,9 +394,7 @@ export function SettingsContent() {
                 onClick={() => {
                   const value = newExpenseCategory.trim();
                   if (!value) return;
-                  setExpenseCategories((prev) =>
-                    normalizeCategories([...prev, value])
-                  );
+                  setExpenseCategories((prev) => normalizeCategories([...prev, value]));
                   setNewExpenseCategory("");
                 }}
                 className="inline-flex items-center justify-center rounded-xl border border-border-subtle px-4 py-2.5 text-sm font-medium text-text-primary transition hover:bg-bg-elevated"
@@ -354,7 +409,10 @@ export function SettingsContent() {
         </details>
 
         {/* Subscription Categories */}
-        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Subscription Categories</h2></summary>
+        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6">
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Subscription Categories</h2>
+          </summary>
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {subscriptionCategories.map((categoryName) => (
@@ -391,9 +449,7 @@ export function SettingsContent() {
                 onClick={() => {
                   const value = newSubscriptionCategory.trim();
                   if (!value) return;
-                  setSubscriptionCategories((prev) =>
-                    normalizeCategories([...prev, value])
-                  );
+                  setSubscriptionCategories((prev) => normalizeCategories([...prev, value]));
                   setNewSubscriptionCategory("");
                 }}
                 className="inline-flex items-center justify-center rounded-xl border border-border-subtle px-4 py-2.5 text-sm font-medium text-text-primary transition hover:bg-bg-elevated"
@@ -407,13 +463,25 @@ export function SettingsContent() {
           </div>
         </details>
 
-        {process.env.NEXT_PUBLIC_UK_DEMO_ONLY !== "true" && <BackgroundNotificationSettings />}
+        {process.env.NEXT_PUBLIC_UK_DEMO_ONLY !== "true" &&
+          process.env.NEXT_PUBLIC_AUTHENTICATED_APP !== "true" && (
+            <BackgroundNotificationSettings />
+          )}
 
         {/* Reminder Timing */}
-        <details id="settings-reminders" className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Reminder Timing</h2></summary>
+        <details
+          id="settings-reminders"
+          className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"
+        >
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Reminder Timing</h2>
+          </summary>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-4">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-4"
+              >
                 Rent Reminder Lead Time (days)
               </label>
               <input
@@ -422,14 +490,18 @@ export function SettingsContent() {
                 max={30}
                 value={rentReminderDays}
                 onChange={(e) => setRentReminderDays(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-4"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-4"
               />
               <p className="mt-1 text-xs text-text-secondary">
                 Sends rent push reminders this many days before due date.
               </p>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-5">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-5"
+              >
                 Bill Reminder Lead Time (days)
               </label>
               <input
@@ -438,7 +510,8 @@ export function SettingsContent() {
                 max={30}
                 value={billReminderDays}
                 onChange={(e) => setBillReminderDays(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-5"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-5"
               />
               <p className="mt-1 text-xs text-text-secondary">
                 Sends subscription bill push reminders this many days before due date.
@@ -448,21 +521,31 @@ export function SettingsContent() {
         </details>
 
         {/* Rent Settings */}
-        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Rent Settings</h2></summary>
+        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6">
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Rent Settings</h2>
+          </summary>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-6">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-6"
+              >
                 Rent Amount ({baseCurrencyInput})
               </label>
               <input
                 type="number"
                 value={rentAmount}
                 onChange={(e) => setRentAmount(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-6"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-6"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-7">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-7"
+              >
                 Rent Due Day
               </label>
               <input
@@ -471,47 +554,64 @@ export function SettingsContent() {
                 max={31}
                 value={rentDay}
                 onChange={(e) => setRentDay(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-7"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-7"
               />
             </div>
           </div>
         </details>
 
         {/* Budget Settings */}
-        <details id="settings-budget" className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Budget & Paycheck</h2></summary>
+        <details
+          id="settings-budget"
+          className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"
+        >
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Budget & Paycheck</h2>
+          </summary>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-8">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-8"
+              >
                 Monthly Essentials Budget ({baseCurrencyInput})
               </label>
               <input
                 type="number"
                 value={budget}
                 onChange={(e) => setBudget(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-8"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-8"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-9">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-9"
+              >
                 Paycheck Amount ({baseCurrencyInput})
               </label>
               <input
                 type="number"
                 value={paycheckAmount}
                 onChange={(e) => setPaycheckAmount(e.target.value)}
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-9"
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-9"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-10">
+              <label
+                className="mb-1 block text-xs font-medium text-text-secondary"
+                htmlFor="settings-field-10"
+              >
                 Paycheck Frequency
               </label>
               <select
                 value={paycheckFreq}
-                onChange={(e) =>
-                  setPaycheckFreq(e.target.value as PaycheckFrequency)
-                }
-                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-10"
+                onChange={(e) => setPaycheckFreq(e.target.value as PaycheckFrequency)}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                id="settings-field-10"
               >
                 <option value="weekly">Weekly</option>
                 <option value="bi-weekly">Bi-weekly</option>
@@ -522,9 +622,15 @@ export function SettingsContent() {
         </details>
 
         {/* Dismissed Recurring Charges */}
-        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6"><summary><h2 className="text-base font-semibold text-text-primary">Dismissed Recurring Charges</h2></summary>
+        <details className="money-settings-group rounded-2xl border border-border-subtle bg-bg-secondary p-6">
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">
+              Dismissed Recurring Charges
+            </h2>
+          </summary>
           <p className="mb-4 text-[11px] text-text-secondary">
-            Merchants you dismiss from detected subscriptions won&apos;t appear again. Restore them here to re-enable detection.
+            Merchants you dismiss from detected subscriptions won&apos;t appear again. Restore them
+            here to re-enable detection.
           </p>
           {(settings?.dismissed_merchants ?? []).length > 0 ? (
             <div className="flex flex-wrap gap-2">
@@ -543,7 +649,9 @@ export function SettingsContent() {
                           body: JSON.stringify({ merchant }),
                         });
                         await refresh();
-                      } catch { /* silent */ }
+                      } catch {
+                        /* silent */
+                      }
                     }}
                     className="ml-0.5 rounded p-0.5 text-text-secondary hover:bg-red-500/10 hover:text-red-400"
                     title="Restore"
@@ -555,7 +663,8 @@ export function SettingsContent() {
             </div>
           ) : (
             <p className="text-xs text-text-secondary/60">
-              No dismissed merchants yet. Dismiss a detected recurring charge on the Subscriptions page and it will appear here.
+              No dismissed merchants yet. Dismiss a detected recurring charge on the Subscriptions
+              page and it will appear here.
             </p>
           )}
         </details>
@@ -563,16 +672,12 @@ export function SettingsContent() {
         {/* Allocation Plans — CRUD */}
         <section className="rounded-2xl border border-border-subtle bg-bg-secondary p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-text-primary">
-              Allocation Plans
-            </h2>
+            <h2 className="text-base font-semibold text-text-primary">Allocation Plans</h2>
             <button
               onClick={() => {
                 setEditingPlanId(null);
                 setPlanName("");
-                setPlanAllocations(
-                  Object.fromEntries(accounts.map((a) => [a.id, ""]))
-                );
+                setPlanAllocations(Object.fromEntries(accounts.map((a) => [a.id, ""])));
                 setPlanGoalLinks({});
                 setPlanError("");
                 setShowPlanModal(true);
@@ -592,15 +697,16 @@ export function SettingsContent() {
 
           {plans.length === 0 && accounts.length > 0 && (
             <p className="text-sm text-text-secondary">
-              No allocation plans yet. Create one to define how income gets
-              distributed across your accounts.
+              No allocation plans yet. Create one to define how income gets distributed across your
+              accounts.
             </p>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             {plans.map((plan) => {
               const alloc = plan.allocations as Record<string, number>;
-              const goalLinks = ((plan.allocations as Record<string, unknown>).__goals__ ?? {}) as Record<string, string>;
+              const goalLinks = ((plan.allocations as Record<string, unknown>).__goals__ ??
+                {}) as Record<string, string>;
               return (
                 <div
                   key={plan.id}
@@ -611,9 +717,7 @@ export function SettingsContent() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-text-primary">
-                      {plan.name}
-                    </h3>
+                    <h3 className="text-sm font-semibold text-text-primary">{plan.name}</h3>
                     <div className="flex items-center gap-1">
                       {plan.is_active ? (
                         <span className="inline-flex items-center gap-1 rounded-lg bg-accent-purple/10 px-2 py-0.5 text-xs font-medium text-accent-purple">
@@ -636,7 +740,8 @@ export function SettingsContent() {
                             existing[a.id] = (alloc[a.id] ?? 0).toString();
                           }
                           setPlanAllocations(existing);
-                          const existingGoalLinks = (plan.allocations as Record<string, unknown>).__goals__ as Record<string, string> | undefined;
+                          const existingGoalLinks = (plan.allocations as Record<string, unknown>)
+                            .__goals__ as Record<string, string> | undefined;
                           setPlanGoalLinks(existingGoalLinks ?? {});
                           setPlanError("");
                           setShowPlanModal(true);
@@ -648,12 +753,7 @@ export function SettingsContent() {
                       </button>
                       <button
                         onClick={async () => {
-                          if (
-                            !confirm(
-                              `Delete plan "${plan.name}"?`
-                            )
-                          )
-                            return;
+                          if (!confirm(`Delete plan "${plan.name}"?`)) return;
                           await deleteAllocationPlan(plan.id);
                           await refresh();
                         }}
@@ -668,16 +768,16 @@ export function SettingsContent() {
                     {accounts
                       .filter((a) => (alloc[a.id] ?? 0) > 0)
                       .map((a) => (
-                        <div
-                          key={a.id}
-                          className="flex items-center justify-between text-xs"
-                        >
+                        <div key={a.id} className="flex items-center justify-between text-xs">
                           <span className="text-text-secondary">
                             {a.name}
-                            {goalLinks[a.id] && (() => {
-                              const g = goals.find((gl) => gl.id === goalLinks[a.id]);
-                              return g ? <span className="ml-1 text-accent-purple">→ {g.name}</span> : null;
-                            })()}
+                            {goalLinks[a.id] &&
+                              (() => {
+                                const g = goals.find((gl) => gl.id === goalLinks[a.id]);
+                                return g ? (
+                                  <span className="ml-1 text-accent-purple">→ {g.name}</span>
+                                ) : null;
+                              })()}
                           </span>
                           <span className="font-medium text-text-primary">
                             {m(alloc[a.id] ?? 0)}
@@ -686,13 +786,11 @@ export function SettingsContent() {
                       ))}
                     <div className="mt-1 border-t border-border-subtle pt-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-text-secondary">
-                          Total
-                        </span>
+                        <span className="font-medium text-text-secondary">Total</span>
                         <span className="font-bold text-text-primary">
                           {m(
                             Object.entries(alloc).reduce(
-                              (s, [k, v]) => k === "__goals__" ? s : s + (Number(v) || 0),
+                              (s, [k, v]) => (k === "__goals__" ? s : s + (Number(v) || 0)),
                               0
                             )
                           )}
@@ -717,21 +815,27 @@ export function SettingsContent() {
                 <button
                   onClick={() => setShowPlanModal(false)}
                   className="rounded-lg p-1 text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
-                 aria-label="Close" title="Close">
+                  aria-label="Close"
+                  title="Close"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-11">
+                  <label
+                    className="mb-1 block text-xs font-medium text-text-secondary"
+                    htmlFor="settings-field-11"
+                  >
                     Plan Name
                   </label>
                   <input
                     value={planName}
                     onChange={(e) => setPlanName(e.target.value)}
                     placeholder="e.g. 50/30/20 Split"
-                    className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-11"
+                    className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+                    id="settings-field-11"
                   />
                 </div>
 
@@ -741,10 +845,7 @@ export function SettingsContent() {
                   </label>
                   <div className="space-y-2">
                     {accounts.map((a) => (
-                      <div
-                        key={a.id}
-                        className="flex items-center gap-2"
-                      >
+                      <div key={a.id} className="flex items-center gap-2">
                         <span className="min-w-[100px] shrink-0 text-xs text-text-secondary">
                           {a.name}
                         </span>
@@ -776,7 +877,9 @@ export function SettingsContent() {
                         >
                           <option value="">No goal</option>
                           {goals.map((g) => (
-                            <option key={g.id} value={g.id}>{g.name}</option>
+                            <option key={g.id} value={g.id}>
+                              {g.name}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -786,10 +889,7 @@ export function SettingsContent() {
                     Total:{" "}
                     <span className="font-bold text-text-primary">
                       {formatMoney(
-                        Object.values(planAllocations).reduce(
-                          (s, v) => s + (parseFloat(v) || 0),
-                          0
-                        )
+                        Object.values(planAllocations).reduce((s, v) => s + (parseFloat(v) || 0), 0)
                       )}
                     </span>
                   </p>
@@ -817,16 +917,12 @@ export function SettingsContent() {
                       return;
                     }
                     const allocObj: Record<string, number> = {};
-                    for (const [accId, val] of Object.entries(
-                      planAllocations
-                    )) {
+                    for (const [accId, val] of Object.entries(planAllocations)) {
                       const n = parseFloat(val);
                       if (n > 0) allocObj[accId] = n;
                     }
                     if (Object.keys(allocObj).length === 0) {
-                      setPlanError(
-                        "Assign an amount to at least one account"
-                      );
+                      setPlanError("Assign an amount to at least one account");
                       return;
                     }
 
@@ -854,18 +950,16 @@ export function SettingsContent() {
                         if (goalId && allocObj[accountId]) {
                           try {
                             await addGoalAccountAllocation(goalId, accountId, allocObj[accountId]);
-                          } catch { /* link may already exist */ }
+                          } catch {
+                            /* link may already exist */
+                          }
                         }
                       }
 
                       await refresh();
                       setShowPlanModal(false);
                     } catch (err: unknown) {
-                      setPlanError(
-                        err instanceof Error
-                          ? err.message
-                          : "Failed to save plan"
-                      );
+                      setPlanError(err instanceof Error ? err.message : "Failed to save plan");
                     } finally {
                       setPlanSaving(false);
                     }
@@ -873,9 +967,7 @@ export function SettingsContent() {
                   disabled={planSaving}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-accent-purple px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
                 >
-                  {planSaving && (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  )}
+                  {planSaving && <Loader2 className="h-4 w-4 animate-spin" />}
                   {editingPlanId ? "Update Plan" : "Create Plan"}
                 </button>
               </div>
@@ -884,29 +976,22 @@ export function SettingsContent() {
         )}
 
         {/* Change PIN */}
-        <ChangePinSection />
+        {process.env.NEXT_PUBLIC_AUTHENTICATED_APP !== "true" && <ChangePinSection />}
 
         {/* Danger Zone */}
-        <details className="money-settings-group rounded-2xl border border-red-500/20 bg-red-500/5 p-6"><summary><h2 className="text-base font-semibold text-text-primary">Danger Zone</h2></summary>
+        <details className="money-settings-group rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
+          <summary>
+            <h2 className="text-base font-semibold text-text-primary">Danger Zone</h2>
+          </summary>
           <p className="mb-4 text-xs text-text-secondary">
-            Reset all dashboard data. This will delete all accounts,
-            transactions, goals, and settings. Seed data will be recreated on
-            next login.
+            Reset all dashboard data. This will delete all accounts, transactions, goals, and
+            settings. Seed data will be recreated on next login.
           </p>
           <button
             onClick={async () => {
-              if (
-                !confirm(
-                  "This will permanently delete ALL your finance data. Are you sure?"
-                )
-              )
+              if (!confirm("This will permanently delete ALL your finance data. Are you sure?"))
                 return;
-              if (
-                !confirm(
-                  "Really sure? This cannot be undone."
-                )
-              )
-                return;
+              if (!confirm("Really sure? This cannot be undone.")) return;
 
               const res = await fetch("/api/reset", { method: "POST" });
               if (!res.ok) {
@@ -922,7 +1007,18 @@ export function SettingsContent() {
           </button>
         </details>
       </div>
-      <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-bg-secondary p-4"><p className="text-xs text-text-secondary" aria-live="polite">{saved ? "Your settings are saved." : "Save your changes before leaving Settings."}</p><button onClick={handleSave} disabled={saving} className="shrink-0 rounded-full bg-text-primary px-5 py-3 text-sm font-medium text-bg-main">{saving ? "Saving…" : "Save settings"}</button></div>
+      <div className="mt-6 flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-bg-secondary p-4">
+        <p className="text-xs text-text-secondary" aria-live="polite">
+          {saved ? "Your settings are saved." : "Save your changes before leaving Settings."}
+        </p>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="shrink-0 rounded-full bg-text-primary px-5 py-3 text-sm font-medium text-bg-main"
+        >
+          {saving ? "Saving…" : "Save settings"}
+        </button>
+      </div>
     </>
   );
 }
@@ -997,9 +1093,7 @@ function ChangePinSection() {
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary">
-            Current PIN
-          </label>
+          <label className="mb-1 block text-xs font-medium text-text-secondary">Current PIN</label>
           <div className="relative">
             <input
               type={showCurrent ? "text" : "password"}
@@ -1014,15 +1108,15 @@ function ChangePinSection() {
               type="button"
               onClick={() => setShowCurrent(!showCurrent)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-             aria-label="Show value" title="Show value">
+              aria-label="Show value"
+              title="Show value"
+            >
               {showCurrent ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary">
-            New PIN
-          </label>
+          <label className="mb-1 block text-xs font-medium text-text-secondary">New PIN</label>
           <div className="relative">
             <input
               type={showNew ? "text" : "password"}
@@ -1037,13 +1131,18 @@ function ChangePinSection() {
               type="button"
               onClick={() => setShowNew(!showNew)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text-primary"
-             aria-label="Show value" title="Show value">
+              aria-label="Show value"
+              title="Show value"
+            >
               {showNew ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </button>
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-secondary" htmlFor="settings-field-12">
+          <label
+            className="mb-1 block text-xs font-medium text-text-secondary"
+            htmlFor="settings-field-12"
+          >
             Confirm New PIN
           </label>
           <input
@@ -1053,15 +1152,14 @@ function ChangePinSection() {
             maxLength={PIN_LEN}
             inputMode="numeric"
             placeholder="••••••"
-            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple" id="settings-field-12"
+            className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
+            id="settings-field-12"
           />
         </div>
       </div>
 
       {error && (
-        <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
-          {error}
-        </p>
+        <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
       )}
       {success && (
         <p className="mt-3 rounded-lg bg-green-500/10 px-3 py-2 text-xs text-green-400">
@@ -1074,11 +1172,7 @@ function ChangePinSection() {
         disabled={saving}
         className="mt-4 inline-flex items-center gap-2 rounded-xl bg-accent-purple px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:-translate-y-0.5 disabled:opacity-60"
       >
-        {saving ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <KeyRound className="h-4 w-4" />
-        )}
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
         Update PIN
       </button>
     </section>

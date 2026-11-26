@@ -46,6 +46,7 @@ const navSections = [
       { href: "/expenses", label: "Expenses", icon: ArrowDownUp },
       { href: "/accounts", label: "Accounts", icon: PiggyBank },
       { href: "/credit-cards", label: "Credit Cards", icon: CreditCard },
+      { href: "/debts", label: "All Debts", icon: Scale },
       { href: "/subscriptions", label: "Subscriptions", icon: Receipt },
     ],
   },
@@ -100,6 +101,7 @@ export function MoneySidebar({
   const mobileOverflowItems = [
     { href: remapHref("/income"), label: "Income", icon: Wallet },
     { href: remapHref("/credit-cards"), label: "Credit Cards", icon: CreditCard },
+    { href: remapHref("/debts"), label: "All Debts", icon: Scale },
     { href: remapHref("/goals"), label: "Goals", icon: Target },
     { href: remapHref("/subscriptions"), label: "Subscriptions", icon: Receipt },
     { href: remapHref("/reports"), label: "Reports", icon: BarChart3 },
@@ -127,15 +129,15 @@ export function MoneySidebar({
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
-    const closeOnDesktop = () => { if (desktop.matches) setMoreMenuOpen(false); };
+    const closeOnDesktop = () => {
+      if (desktop.matches) setMoreMenuOpen(false);
+    };
     desktop.addEventListener("change", closeOnDesktop);
     return () => desktop.removeEventListener("change", closeOnDesktop);
   }, []);
 
   // If active page is in overflow, check for active state
-  const isOverflowActive = mobileOverflowItems.some((item) =>
-    pathname.startsWith(item.href)
-  );
+  const isOverflowActive = mobileOverflowItems.some((item) => pathname.startsWith(item.href));
 
   return (
     <Dialog open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
@@ -169,106 +171,118 @@ export function MoneySidebar({
             );
           })}
           <DialogTrigger asChild>
-          <button
-            type="button"
-            aria-expanded={moreMenuOpen}
-            aria-label="More navigation"
-            aria-haspopup="dialog"
-            className={cn(
-              "flex flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-[10px] font-medium transition",
-              isOverflowActive || moreMenuOpen
-                ? "bg-text-primary text-bg-main"
-                : "text-text-secondary hover:text-text-primary"
-            )}
-          >
-            <MoreHorizontal className="h-5 w-5" />
-            <span>More</span>
-          </button>
+            <button
+              type="button"
+              aria-expanded={moreMenuOpen}
+              aria-label="More navigation"
+              aria-haspopup="dialog"
+              className={cn(
+                "flex flex-col items-center gap-0.5 rounded-xl px-1 py-2 text-[10px] font-medium transition",
+                isOverflowActive || moreMenuOpen
+                  ? "bg-text-primary text-bg-main"
+                  : "text-text-secondary hover:text-text-primary"
+              )}
+            >
+              <MoreHorizontal className="h-5 w-5" />
+              <span>More</span>
+            </button>
           </DialogTrigger>
         </div>
       </nav>
 
-        <DialogContent showCloseButton={false} aria-describedby={undefined} className="money-more-sheet md:hidden">
-              <div className="mb-2 flex items-center justify-between px-1">
-                <DialogTitle className="text-lg">Explore Money</DialogTitle>
-                <button
-                  type="button"
-                  onClick={() => setMoreMenuOpen(false)}
-                  aria-label="Close more navigation menu"
-                  className="rounded-lg p-2 text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {mobileOverflowItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname.startsWith(item.href);
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href as any}
-                      onClick={() => setMoreMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition",
-                        isActive
-                          ? "bg-text-primary text-bg-main"
-                          : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
-                      )}
-                    >
-                      <Icon className="h-5 w-5 flex-shrink-0" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border-subtle pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTheme(isDark ? "light" : "dark");
-                    setMoreMenuOpen(false);
-                  }}
-                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
-                >
-                  {isDark ? <Sun className="h-5 w-5 flex-shrink-0" /> : <Moon className="h-5 w-5 flex-shrink-0" />}
-                  <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleBalances();
-                    setMoreMenuOpen(false);
-                  }}
-                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
-                >
-                  {showBalances ? <EyeOff className="h-5 w-5 flex-shrink-0" /> : <Eye className="h-5 w-5 flex-shrink-0" />}
-                  <span>{showBalances ? "Hide Balances" : "Show Balances"}</span>
-                </button>
-                {demoMode ? (
-                  <Link
-                    href="/"
-                    onClick={() => setMoreMenuOpen(false)}
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
-                  >
-                    <LogOut className="h-5 w-5 flex-shrink-0" />
-                    <span>Exit Demo</span>
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      signOut();
-                    }}
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-red-400 transition hover:bg-red-500/10"
-                  >
-                    <LogOut className="h-5 w-5 flex-shrink-0" />
-                    <span>Sign Out</span>
-                  </button>
+      <DialogContent
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="money-more-sheet md:hidden"
+      >
+        <div className="mb-2 flex items-center justify-between px-1">
+          <DialogTitle className="text-lg">Explore Money</DialogTitle>
+          <button
+            type="button"
+            onClick={() => setMoreMenuOpen(false)}
+            aria-label="Close more navigation menu"
+            className="rounded-lg p-2 text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {mobileOverflowItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href as any}
+                onClick={() => setMoreMenuOpen(false)}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition",
+                  isActive
+                    ? "bg-text-primary text-bg-main"
+                    : "text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
                 )}
-              </div>
-        </DialogContent>
+              >
+                <Icon className="h-5 w-5 flex-shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border-subtle pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              setTheme(isDark ? "light" : "dark");
+              setMoreMenuOpen(false);
+            }}
+            className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
+          >
+            {isDark ? (
+              <Sun className="h-5 w-5 flex-shrink-0" />
+            ) : (
+              <Moon className="h-5 w-5 flex-shrink-0" />
+            )}
+            <span>{isDark ? "Light Mode" : "Dark Mode"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              toggleBalances();
+              setMoreMenuOpen(false);
+            }}
+            className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
+          >
+            {showBalances ? (
+              <EyeOff className="h-5 w-5 flex-shrink-0" />
+            ) : (
+              <Eye className="h-5 w-5 flex-shrink-0" />
+            )}
+            <span>{showBalances ? "Hide Balances" : "Show Balances"}</span>
+          </button>
+          {demoMode ? (
+            <Link
+              href="/"
+              onClick={() => setMoreMenuOpen(false)}
+              className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary"
+            >
+              <LogOut className="h-5 w-5 flex-shrink-0" />
+              <span>Exit Demo</span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setMoreMenuOpen(false);
+                signOut();
+              }}
+              className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-red-400 transition hover:bg-red-500/10"
+            >
+              <LogOut className="h-5 w-5 flex-shrink-0" />
+              <span>Sign Out</span>
+            </button>
+          )}
+        </div>
+      </DialogContent>
 
       {/* Desktop sidebar */}
       <aside
@@ -278,7 +292,12 @@ export function MoneySidebar({
           collapsed ? "w-20" : "w-64"
         )}
       >
-        <div className={cn("relative flex items-center gap-3 px-4 py-6", collapsed ? "justify-center" : "justify-between")}>
+        <div
+          className={cn(
+            "relative flex items-center gap-3 px-4 py-6",
+            collapsed ? "justify-center" : "justify-between"
+          )}
+        >
           <Link
             href={remapHref("/") as any}
             className={cn("flex min-w-0 items-center gap-3", collapsed && "justify-center")}
@@ -289,21 +308,25 @@ export function MoneySidebar({
             </span>
             {!collapsed && (
               <span className="min-w-0">
-                <span className="block text-base font-semibold tracking-[-0.03em] text-text-primary">Money</span>
-                <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-text-secondary">Personal finance</span>
+                <span className="block text-base font-semibold tracking-[-0.03em] text-text-primary">
+                  Money
+                </span>
+                <span className="block text-[10px] font-medium uppercase tracking-[0.12em] text-text-secondary">
+                  Personal finance
+                </span>
               </span>
             )}
           </Link>
           <button
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={cn("rounded-full p-2 text-text-secondary hover:bg-bg-elevated hover:text-text-primary", collapsed && "absolute -right-3 top-8 border border-border-subtle bg-[var(--card-bg)] shadow-sm")}
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
+            className={cn(
+              "rounded-full p-2 text-text-secondary hover:bg-bg-elevated hover:text-text-primary",
+              collapsed &&
+                "absolute -right-3 top-8 border border-border-subtle bg-[var(--card-bg)] shadow-sm"
             )}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
         </div>
 
@@ -371,9 +394,7 @@ export function MoneySidebar({
             ) : (
               <EyeOff className="h-4 w-4 flex-shrink-0" />
             )}
-            {!collapsed && (
-              <span>{showBalances ? "Hide Balances" : "Show Balances"}</span>
-            )}
+            {!collapsed && <span>{showBalances ? "Hide Balances" : "Show Balances"}</span>}
           </button>
           <Link
             href="/"

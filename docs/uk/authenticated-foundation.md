@@ -1,3 +1,5 @@
+> Historical foundation slice: the standalone workspace has now been embedded into the original main application. See [main-app-integration.md](main-app-integration.md) for current routes, shared schema and connected commands. Login provisioning instructions below remain valid.
+
 # Authenticated local debt foundation
 
 The approved Next/React base and synthetic demo remain. This slice introduces a separately running authenticated debt workspace; it does not replace the broader approved screens or import old financial records. Cards are one category within all debts alongside loans, catalogue, BNPL and monthly-fee accounts. Each obligation has one balance. The current workspace shows debt totals only, not available bank cash or net worth. Card charges/spending and bank-linked payments will be connected to this same authoritative model in a later slice, with explicit ID mapping rather than parallel balances.
