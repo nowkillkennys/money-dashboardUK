@@ -1,6 +1,6 @@
 # UK Money Dashboard — accepted direction
 
-The user selected https://github.com/nowkillkennys/money-dashboardUK as the application base on 26 November 2026. Retain https://github.com/NightBaRron1412/money-dashboard as upstream and preserve MIT notices. This decision supersedes the old recommendation to evolve Debt Tracker as the main app. GitHub API verification on 26 November 2026 confirms this repository is still a fork of the original upstream. The user explicitly authorized updating this guidance and pushing the completed work to `origin/feature/uk-foundation`. This authorization does not include merging to main, public deployment or provisioning services.
+The user selected https://github.com/nowkillkennys/money-dashboardUK as the application base on 26 November 2026. Retain https://github.com/NightBaRron1412/money-dashboard as upstream and preserve MIT notices. This decision supersedes the old recommendation to evolve Debt Tracker as the main app. After the user detached the repository, GitHub API verification on 26 November 2026 confirms it is now standalone (`fork: false`). Original upstream attribution and MIT obligations remain. The user explicitly authorized pushing the completed integration into `origin/main`, superseding the earlier feature-only authorization. Public deployment and provisioning services remain outside this request.
 
 ## Approved continuation — 26 November 2026
 
@@ -24,7 +24,7 @@ Verified candidate evidence: 106 unit tests across 22 files, 26 PostgreSQL tests
 
 ## Repository publication status
 
-The user authorized the feature-branch push on 26 November 2026. Publish completed local commits plus this guidance update to `origin/feature/uk-foundation` without force-pushing; verify the remote head against local HEAD and report the resulting commit. No merge to main or deployment is authorized. Keep the upstream remote and MIT LICENSE/notices intact. `.uk-work`, credentials, environment files, real statements/extracted text and generated test artifacts must stay excluded. Committed fixtures and the verification screenshot are synthetic.
+The completed feature branch was pushed and verified at `6cb5794`. The user subsequently authorized integration into `origin/main` on 26 November 2026. Main was an ancestor of the verified feature, so a normal fast-forward preserves all history. Preserve the feature branch and verify the remote main head against the integrated local commit; never force-push. No manual deployment is authorized. No GitHub Actions workflows are tracked or currently listed; hosting integrations may still react to a main push, so do not claim that remote publication cannot trigger deployment. Keep the upstream remote and MIT LICENSE/notices intact. `.uk-work`, credentials, environment files, real statements/extracted text and generated test artifacts must stay excluded. Committed fixtures and the verification screenshot are synthetic.
 
 ## Product intent
 

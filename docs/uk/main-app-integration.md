@@ -26,7 +26,7 @@ Next adapters: goals/allocations, subscriptions, holdings/dividends and market-d
 
 ## GitHub access
 
-Read-only checks confirmed the local GitHub account `nowkillkennys` is authenticated and has push/admin permission on `nowkillkennys/money-dashboardUK`. Origin points there; original upstream is retained. The user subsequently authorized updating `claude.md` and pushing the completed feature branch on 26 November 2026. This does not authorize merging to main or deployment. No token was printed or requested from the user. The push result and exact remote commit are verified and reported in the handover.
+Read-only checks confirmed the local GitHub account `nowkillkennys` is authenticated and has push/admin permission on `nowkillkennys/money-dashboardUK`. Origin points there; original upstream is retained. The user subsequently authorized updating `claude.md` and pushing the completed feature branch on 26 November 2026. After detaching the repository from its fork network, the user additionally authorized pushing the completed integration into main. GitHub confirms `fork: false`; original upstream attribution/MIT remain. No manual deployment is requested. No token was printed or requested from the user. The feature push was verified at `6cb5794`; the subsequent main push is verified against the integrated local HEAD and reported in the handover. No GitHub Actions workflows are present/listed; external hosting integrations may react to main pushes.
 
 ## Final local verification
 
