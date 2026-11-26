@@ -6,7 +6,7 @@ import { useMoneyData } from "../hooks/use-money-data";
 import { PageHeader, formatMoney, HIDDEN_BALANCE } from "../components/money-ui";
 import { useBalanceVisibility } from "../balance-visibility-provider";
 import { Loader2, Scale, Trash2, Merge, CheckCircle, AlertTriangle } from "lucide-react";
-import { mainCommand, mainVersion } from "@/lib/workspace/main-client";
+import { getMainData, mainCommand, mainVersion } from "@/lib/workspace/main-client";
 import type { CurrencyCode, DuplicateCandidate } from "@/lib/money/database.types";
 
 interface ReconcileResult {
@@ -98,14 +98,19 @@ export function ReconcileContent() {
         ...(actionType === "delete" ? { delete_id: txIds[1] } : {}),
       });
       applyResult((response as unknown as { row: ReconcileResult }).row);
-      // Read a fresh snapshot after the committed command; this GET never mutates.
-      const preview = await fetch(`/api/workspace/reconciliation?session_id=${result.session.id}`, {
-        cache: "no-store",
-      });
-      const data = await preview.json();
-      if (!preview.ok) throw new Error(data.error || "Could not refresh reconciliation");
-      applyResult(data);
       setActionMsg(`Action "${actionType}" applied successfully.`);
+      try {
+        // Update cached bank versions before another search, as well as the session preview.
+        await getMainData();
+        const preview = await fetch(`/api/workspace/reconciliation?session_id=${result.session.id}`, {
+          cache: "no-store",
+        });
+        const data = await preview.json();
+        if (!preview.ok) throw new Error("Could not refresh reconciliation");
+        applyResult(data);
+      } catch {
+        setActionMsg("Action saved. Reload the page to refresh balances and reconciliation results.");
+      }
     } catch (err) {
       setActionMsg(err instanceof Error ? err.message : "Action failed");
     } finally {
