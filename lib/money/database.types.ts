@@ -226,6 +226,7 @@ export interface CreditCardCharge {
 }
 
 export interface CreditCardPayment {
+  version?: number;
   refund_of_transaction_id?: string | null;
   id: string;
   user_id: string;

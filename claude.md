@@ -20,7 +20,7 @@ Overview, accounts, income, expenses, credit cards and reports read the original
 
 Goals/earmarks/allocation templates, subscription schedules, safe settings, holdings and record-only dividend WRITE adapters are now connected to the same journal/receipts. See docs/uk/main-feature-continuation.md for conservative no-cash-posting semantics, valuation limits and verification. Atomic contributions/automatic allocation, investment trade/cash posting, correction/refund flows, broader duplicate reconciliation and automatic snapshots remain; do not describe this as a complete migration.
 
-Latest continuation evidence: 108 unit tests across 23 files, 82 PostgreSQL tests across 15 files and all 50 browser tests across the five configured layouts passed. This includes charge editing, linked expense synchronization, card removal/order, subscription recording, debt/PDF and retry journeys. Typecheck and offline production build passed; lint has zero errors and one existing Credit Cards navigation warning. See docs/uk/card-charge-editing.md for scope and limitations. Main preview uses the verified image, with no schema changes or personal-record edits.
+Latest continuation evidence: 108 unit tests across 23 files, 101 PostgreSQL tests across 16 files and all 55 browser tests across the five configured layouts passed. This includes repayment/charge editing, card removal/order, subscription recording, debt/PDF and retry journeys. Typecheck and offline production build passed; lint has zero errors and one existing Credit Cards navigation warning. See docs/uk/card-payment-editing.md for scope and limitations. Main preview uses the verified image, with no schema changes or personal-record edits.
 
 ## Repository publication status
 
@@ -74,3 +74,9 @@ Subscription verification: 108 unit/63 PostgreSQL pass; all 10 new browser cases
 Edit charge was visible but its authenticated adapter was unavailable and its old handler split charge and linked-expense writes. It now uses one versioned charge.update command with versions captured on opening the form. Standalone charges remain standalone. Included/unresolved financial edits require statement reconciliation again; anchors/snapshots and bank cash remain intact. This does not reconnect charge deletion, repayment editing/deletion or linked refunds. See docs/uk/card-charge-editing.md.
 
 Charge edit verification: all 108 unit/82 PostgreSQL/50 browser tests pass, including standalone edit, linked metadata synchronization, receipt replay and retained stale drafts. Source review found and fixed the unlinked override-payload case; no remaining P1/P2 findings. Build/typecheck passed, lint retains one existing navigation warning.
+
+## Existing repayment edit fix
+
+The visible Edit Payment adapter was unavailable. It now uses one payment.update command with observed payment/card/bank versions, preserving the original payment/statement identity. Bank source corrections restore old outflow and apply new outflow once, without expenses. Card credit/cashback removes funding; no authenticated legacy purchase-refund linker is offered. Included/unresolved amount/date changes require All Debts review; statement anchors/snapshots are retained. No schema or personal-record changes. See docs/uk/card-payment-editing.md. Individual payment deletion and linked refunds remain separate.
+
+Repayment edit verification: all 108 unit/101 PostgreSQL/55 browser tests pass. Browser checks cover funding bank changes, bank-to-credit and credit-to-bank, lost-response replay and stale-bank drafts. Source review found no P1/P2 findings. Build/typecheck passed, lint retains one existing navigation warning.

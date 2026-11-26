@@ -56,6 +56,8 @@ import type {
   CurrencyCode,
   CreditCard,
   CreditCardCharge,
+  CreditCardPayment,
+  Account,
   Transaction,
 } from "@/lib/money/database.types";
 import { convertCurrency } from "@/lib/money/fx";
@@ -282,6 +284,13 @@ export function CreditCardsContent() {
   const [payError, setPayError] = useState("");
 
   // Payment inline edit
+  const paymentSavePending = useRef(false);
+  const [paymentEditSnapshot, setPaymentEditSnapshot] = useState<{
+    payment: CreditCardPayment;
+    card: CreditCard | undefined;
+    banks: Account[];
+  } | null>(null);
+  const authenticatedPaymentEdit = isAuthenticatedMainApp();
   const [editingPayId, setEditingPayId] = useState<string | null>(null);
   const [editPayDate, setEditPayDate] = useState("");
   const [editPayAmount, setEditPayAmount] = useState("");
@@ -809,12 +818,15 @@ export function CreditCardsContent() {
     }
   };
 
-  const startEditPayment = (p: {
-    id: string;
-    date: string;
-    amount: number;
-    account_id: string | null;
-  }) => {
+  const startEditPayment = (p: CreditCardPayment) => {
+    if (paymentSavePending.current) return;
+    setPaymentEditSnapshot({
+      payment: { ...p },
+      card: creditCards.find((card) => card.id === p.card_id)
+        ? { ...creditCards.find((card) => card.id === p.card_id)! }
+        : undefined,
+      banks: accounts.map((account) => ({ ...account })),
+    });
     setEditingPayId(p.id);
     setEditPayRefundId(
       creditCardPayments.find((payment) => payment.id === p.id)?.refund_of_transaction_id || ""
@@ -825,31 +837,77 @@ export function CreditCardsContent() {
   };
 
   const handleSavePaymentEdit = async (id: string) => {
+    if (paymentSavePending.current) return;
+    paymentSavePending.current = true;
     setSaving(true);
     try {
-      const amt = parseFloat(editPayAmount);
-      if (isNaN(amt) || amt <= 0) return;
-      validateRefund(
-        {
+      if (authenticatedPaymentEdit) {
+        const snapshot = paymentEditSnapshot;
+        if (
+          !snapshot ||
+          snapshot.payment.id !== id ||
+          !snapshot.payment.version ||
+          !snapshot.card?.version
+        ) {
+          throw new Error(
+            "The observed payment or card version is missing. Close this editor and reload before trying again."
+          );
+        }
+        const bankIds = [
+          ...new Set(
+            [snapshot.payment.account_id, editPayAccountId || null].filter(
+              (bankId): bankId is string => bankId !== null
+            )
+          ),
+        ];
+        const bankVersions = bankIds.map((bankId) => {
+          const bank = snapshot.banks.find((account) => account.id === bankId);
+          if (!bank?.version)
+            throw new Error(
+              "The observed bank version is missing. Close this editor and reload before trying again."
+            );
+          return { id: bankId, version: bank.version };
+        });
+        await updateCreditCardPayment(
           id,
-          refund_of_transaction_id: !editPayAccountId ? editPayRefundId : null,
-          amount: amt,
+          {
+            date: editPayDate,
+            amount: editPayAmount,
+            account_id: editPayAccountId || null,
+          },
+          {
+            version: snapshot.payment.version,
+            card_version: snapshot.card.version,
+            bank_versions: bankVersions,
+          }
+        );
+      } else {
+        const amt = parseFloat(editPayAmount);
+        if (isNaN(amt) || amt <= 0) throw new Error("Enter a positive payment amount.");
+        validateRefund(
+          {
+            id,
+            refund_of_transaction_id: !editPayAccountId ? editPayRefundId : null,
+            amount: amt,
+            date: editPayDate,
+            card_id: creditCardPayments.find((p) => p.id === id)?.card_id,
+          },
+          transactions,
+          creditCardPayments,
+          creditCardCharges
+        );
+        await updateCreditCardPayment(id, {
           date: editPayDate,
-          card_id: creditCardPayments.find((p) => p.id === id)?.card_id,
-        },
-        transactions,
-        creditCardPayments,
-        creditCardCharges
-      );
-      await updateCreditCardPayment(id, {
-        date: editPayDate,
-        amount: amt,
-        account_id: editPayAccountId || null,
-        refund_of_transaction_id: !editPayAccountId ? editPayRefundId || null : null,
-      });
+          amount: amt,
+          account_id: editPayAccountId || null,
+          refund_of_transaction_id: !editPayAccountId ? editPayRefundId || null : null,
+        });
+      }
       await refresh();
       setEditingPayId(null);
+      setPaymentEditSnapshot(null);
     } finally {
+      paymentSavePending.current = false;
       setSaving(false);
     }
   };
@@ -1727,7 +1785,11 @@ export function CreditCardsContent() {
         open={!!editingPayId}
         title="Edit Payment"
         saving={saving}
-        onClose={() => setEditingPayId(null)}
+        onClose={() => {
+          if (paymentSavePending.current) return;
+          setEditingPayId(null);
+          setPaymentEditSnapshot(null);
+        }}
         onSave={async () => {
           if (editingPayId) await handleSavePaymentEdit(editingPayId);
         }}
@@ -1760,15 +1822,42 @@ export function CreditCardsContent() {
             value={editPayAccountId}
             onChange={(event) => setEditPayAccountId(event.target.value)}
           >
-            <option value="">Credit / refund</option>
-            {accounts.map((a) => (
+            <option value="">
+              {authenticatedPaymentEdit
+                ? "Card credit / cashback (no bank movement)"
+                : "Credit / refund"}
+            </option>
+            {(authenticatedPaymentEdit
+              ? (paymentEditSnapshot?.banks ?? []).filter(
+                  (account) =>
+                    !account.archived || account.id === paymentEditSnapshot?.payment.account_id
+                )
+              : accounts
+            ).map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name} ({a.currency})
+                {authenticatedPaymentEdit && a.archived ? " (current archived)" : ""}
               </option>
             ))}
           </select>
         </EditField>
-        {!editPayAccountId && (
+        {authenticatedPaymentEdit && (
+          <div className="space-y-2 text-sm text-text-secondary">
+            <p>
+              Correcting an existing repayment updates bank outflow and card debt. No expense is
+              created and no real money is sent.
+            </p>
+            <p>
+              {editPayAccountId
+                ? "Changing paid from corrects which bank balance includes this repayment."
+                : "Card credit / cashback reduces card debt without bank movement."}
+            </p>
+            <p>
+              Amount or date changes to payments included in a statement need review in All Debts.
+            </p>
+          </div>
+        )}
+        {!authenticatedPaymentEdit && !editPayAccountId && (
           <RefundExpensePicker
             required={false}
             transactions={transactions.filter((t) =>

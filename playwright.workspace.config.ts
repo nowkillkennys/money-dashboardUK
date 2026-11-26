@@ -8,6 +8,7 @@ export default defineConfig({
     "main-features.spec.ts",
     "card-maintenance.spec.ts",
     "card-charge-edit.spec.ts",
+    "card-payment-edit.spec.ts",
     "subscription-payments.spec.ts",
   ],
   workers: 1,

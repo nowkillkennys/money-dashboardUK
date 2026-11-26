@@ -1,3 +1,4 @@
+import { paymentEditFields, executePaymentEditCommand } from "./main-payment-edit";
 import { chargeEditFields, executeChargeEditCommand } from "./main-charge-edit";
 import {
   executeSubscriptionPaymentCommand,
@@ -109,6 +110,7 @@ export async function executeMainCommand(
   const common = ["action", "id", "version", "currency"];
   const allowed: Record<string, string[]> = {
     charge: chargeEditFields,
+    payment: paymentEditFields,
     ...orderingFields,
     ...goalFields,
     ...preferenceFields,
@@ -200,6 +202,7 @@ export async function executeMainCommand(
       throw new HttpError(400, "This workspace uses GBP");
     const extension =
       (await executeChargeEditCommand(c, owner, input)) ??
+      (await executePaymentEditCommand(c, owner, input)) ??
       (await executeSubscriptionPaymentCommand(c, owner, input)) ??
       (await executeGoalCommand(c, owner, input)) ??
       (await executePreferenceCommand(c, owner, input)) ??

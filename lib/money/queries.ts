@@ -1595,29 +1595,54 @@ export async function createCreditCardPayment(
   return data as CreditCardPayment;
 }
 
+export interface CreditCardPaymentEditContext {
+  version?: number;
+  card_version?: number;
+  bank_versions: { id: string; version: number }[];
+}
+
 export async function updateCreditCardPayment(
   id: string,
-  updates: Partial<Omit<CreditCardPayment, "id" | "created_at" | "user_id">>
+  updates: Omit<Partial<Omit<CreditCardPayment, "id" | "created_at" | "user_id">>, "amount"> & {
+    amount?: number | string;
+  },
+  context?: CreditCardPaymentEditContext
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("payment.update", {
+      id,
+      version: context?.version,
+      card_version: context?.card_version,
+      bank_versions: context?.bank_versions,
+      amount: updates.amount,
+      date: updates.date,
+      account_id: updates.account_id,
+    });
   }
+  const { amount, ...otherUpdates } = updates;
+  const legacyUpdates = {
+    ...otherUpdates,
+    ...(amount !== undefined ? { amount: Number(amount) } : {}),
+  };
   if (isDemoModeRoute()) {
     const s = (await import("./demo-store")).getDemoStore();
     const idx = s.creditCardPayments.findIndex((p) => p.id === id);
     if (idx >= 0) {
       validateRefund(
-        { ...s.creditCardPayments[idx], ...updates },
+        { ...s.creditCardPayments[idx], ...legacyUpdates },
         s.transactions,
         s.creditCardPayments,
         s.creditCardCharges
       );
-      Object.assign(s.creditCardPayments[idx], updates);
+      Object.assign(s.creditCardPayments[idx], legacyUpdates);
       (await import("./demo-store")).refreshDemoRefunds();
     }
     return;
   }
-  const { error } = await supabase.from("money_credit_card_payments").update(updates).eq("id", id);
+  const { error } = await supabase
+    .from("money_credit_card_payments")
+    .update(legacyUpdates)
+    .eq("id", id);
   if (error) throw error;
 }
 
