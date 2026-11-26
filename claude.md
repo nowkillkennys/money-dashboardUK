@@ -20,6 +20,8 @@ Overview, accounts, income, expenses, credit cards and reports read the original
 
 Goals/earmarks/allocation templates, subscription schedules, safe settings, holdings and record-only dividend WRITE adapters are now connected to the same journal/receipts. See docs/uk/main-feature-continuation.md for conservative no-cash-posting semantics, valuation limits and verification. Atomic contributions/automatic allocation, investment trade/cash posting, correction/refund flows, broader duplicate reconciliation and automatic snapshots remain; do not describe this as a complete migration.
 
+Current restoration/testing status: Goal contributions are reconnected with compilation/build and source inspection only; runtime tests are explicitly paused until the user requests them. See docs/uk/goal-contribution-restoration.md and docs/uk/disconnected-actions.md. The following test counts are historical for the preceding repayment-edit release, not verification of the new goal contribution command.
+
 Latest continuation evidence: 108 unit tests across 23 files, 101 PostgreSQL tests across 16 files and all 55 browser tests across the five configured layouts passed. This includes repayment/charge editing, card removal/order, subscription recording, debt/PDF and retry journeys. Typecheck and offline production build passed; lint has zero errors and one existing Credit Cards navigation warning. See docs/uk/card-payment-editing.md for scope and limitations. Main preview uses the verified image, with no schema changes or personal-record edits.
 
 ## Repository publication status
@@ -80,3 +82,11 @@ Charge edit verification: all 108 unit/82 PostgreSQL/50 browser tests pass, incl
 The visible Edit Payment adapter was unavailable. It now uses one payment.update command with observed payment/card/bank versions, preserving the original payment/statement identity. Bank source corrections restore old outflow and apply new outflow once, without expenses. Card credit/cashback removes funding; no authenticated legacy purchase-refund linker is offered. Included/unresolved amount/date changes require All Debts review; statement anchors/snapshots are retained. No schema or personal-record changes. See docs/uk/card-payment-editing.md. Individual payment deletion and linked refunds remain separate.
 
 Repayment edit verification: all 108 unit/101 PostgreSQL/55 browser tests pass. Browser checks cover funding bank changes, bank-to-credit and credit-to-bank, lost-response replay and stale-bank drafts. Source review found no P1/P2 findings. Build/typecheck passed, lint retains one existing navigation warning.
+
+## User testing pause
+
+The user explicitly requested on 26 November 2026: skip tests until they say otherwise, while continuing to reconnect existing features. Do not run automated unit, integration or browser test suites, or silently resume them in a later continuation. Compile/typecheck/build and source review may continue. New restoration work during this pause must be labelled untested at runtime; earlier passing suites do not verify it.
+
+## Goal contribution restoration
+
+Add Contribution now uses goal.contribute: one recorded GBP transfer and optional fixed allocation updates under the shared owner/manual/receipt transaction. Source/destination cash must cover all fixed earmarks after the transfer. Automatic/null allocations remain automatic, and older primary linked-account goals are supported. Captured versions, pending guards and retained error drafts are in place. No tests were run or added under the user testing pause; compilation and offline build passed. No schema changes or personal-record edits. Inventory: docs/uk/disconnected-actions.md.

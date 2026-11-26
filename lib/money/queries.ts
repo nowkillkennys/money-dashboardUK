@@ -487,6 +487,24 @@ export async function deleteGoal(id: string) {
   if (error) throw error;
 }
 
+export interface GoalContributionInput {
+  id: string;
+  version: number | undefined;
+  source_account_id: string;
+  destination_account_id: string;
+  source_version: number | undefined;
+  destination_version: number | undefined;
+  amount: string;
+  date: string;
+  decrease_source_split: boolean;
+  increase_destination_split: boolean;
+}
+
+/** Submit exactly the versions and values observed when the contribution form opened. */
+export async function contributeToGoal(input: GoalContributionInput) {
+  return mainCommand("goal.contribute", { ...input });
+}
+
 export async function addGoalAccountAllocation(
   goalId: string,
   accountId: string,

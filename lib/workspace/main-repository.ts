@@ -1,3 +1,4 @@
+import { goalContributionFields, executeGoalContributionCommand } from "./main-goal-contribution";
 import { paymentEditFields, executePaymentEditCommand } from "./main-payment-edit";
 import { chargeEditFields, executeChargeEditCommand } from "./main-charge-edit";
 import {
@@ -158,6 +159,7 @@ export async function executeMainCommand(
       "tx_overrides",
     ],
   };
+  if (input.action === "goal.contribute") allowed.goal = goalContributionFields;
   if (input.action === "subscription.pay") allowed.subscription = subscriptionPaymentFields;
   const category = typeof input.action === "string" ? input.action.split(".")[0] : "";
   if (!Object.prototype.hasOwnProperty.call(allowed, category))
@@ -204,6 +206,7 @@ export async function executeMainCommand(
       (await executeChargeEditCommand(c, owner, input)) ??
       (await executePaymentEditCommand(c, owner, input)) ??
       (await executeSubscriptionPaymentCommand(c, owner, input)) ??
+      (await executeGoalContributionCommand(c, owner, input)) ??
       (await executeGoalCommand(c, owner, input)) ??
       (await executePreferenceCommand(c, owner, input)) ??
       (await executeInvestmentCommand(c, owner, input)) ??

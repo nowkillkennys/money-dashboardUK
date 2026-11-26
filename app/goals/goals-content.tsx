@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { isAuthenticatedMainApp } from "@/lib/workspace/main-client";
 import { useMoneyData } from "../hooks/use-money-data";
 import { useMoneyFx } from "../hooks/use-money-fx";
@@ -26,17 +26,19 @@ import {
   CalendarClock,
 } from "lucide-react";
 import {
+  contributeToGoal,
   createGoal,
   updateGoal,
   deleteGoal as deleteGoalApi,
   setActivePlan,
   type GoalAccountLinkInput,
 } from "@/lib/money/queries";
-import type { CurrencyCode, Goal } from "@/lib/money/database.types";
+import type { CurrencyCode, Goal, Account } from "@/lib/money/database.types";
 import { useBalanceVisibility } from "../balance-visibility-provider";
 import { computeGoalProgress } from "@/lib/money/goal-allocation";
 import { predictGoalCompletion } from "@/lib/money/forecasting";
 import { convertCurrency } from "@/lib/money/fx";
+import { londonCivilDate } from "@/lib/money/uk-locale";
 
 export function GoalsContent() {
   const {
@@ -55,6 +57,18 @@ export function GoalsContent() {
   const baseCurrency: CurrencyCode = settings?.base_currency ?? "GBP";
   const m = (v: number) => (showBalances ? formatMoney(v, baseCurrency) : HIDDEN_BALANCE);
   const [showContribute, setShowContribute] = useState<string | null>(null);
+  const authenticated = isAuthenticatedMainApp();
+  const contributionPending = useRef(false);
+  const [contributionSnapshot, setContributionSnapshot] = useState<{
+    goal: Goal;
+    accounts: Account[];
+    links: Array<{ account_id: string; allocated_amount: number | null }>;
+  } | null>(null);
+  const [contributionDate, setContributionDate] = useState("");
+  const fixedContributionLink = (accountId: string) =>
+    contributionSnapshot?.links.some(
+      (link) => link.account_id === accountId && link.allocated_amount !== null
+    ) ?? false;
   const [contributeAmount, setContributeAmount] = useState("");
   const [contributeAccountId, setContributeAccountId] = useState("");
   const [contributeSourceAccountId, setContributeSourceAccountId] = useState("");
@@ -336,6 +350,42 @@ export function GoalsContent() {
   };
 
   const handleContribute = async (goalId: string) => {
+    if (contributionPending.current) return;
+    if (authenticated) {
+      const observed = contributionSnapshot;
+      const source = observed?.accounts.find((account) => account.id === contributeSourceAccountId);
+      const destination = observed?.accounts.find((account) => account.id === contributeAccountId);
+      if (!observed || !source || !destination) {
+        setContributeError("Choose source and destination accounts.");
+        return;
+      }
+      contributionPending.current = true;
+      setSaving(true);
+      setContributeError("");
+      try {
+        await contributeToGoal({
+          id: observed.goal.id,
+          version: observed.goal.version,
+          source_account_id: source.id,
+          destination_account_id: destination.id,
+          source_version: source.version,
+          destination_version: destination.version,
+          amount: contributeAmount,
+          date: contributionDate,
+          decrease_source_split: decreaseSourceSplit,
+          increase_destination_split: increaseDestSplit,
+        });
+        await refresh();
+        setShowContribute(null);
+        setContributionSnapshot(null);
+      } catch (error) {
+        setContributeError(error instanceof Error ? error.message : "Failed to add contribution.");
+      } finally {
+        contributionPending.current = false;
+        setSaving(false);
+      }
+      return;
+    }
     const goal = goals.find((g) => g.id === goalId);
     if (!goal) return;
     const targetIds = getGoalAccountIds(goal);
@@ -432,7 +482,7 @@ export function GoalsContent() {
     setPhase2Dismissed(true);
   };
 
-  if (loading) {
+  if (loading && !showContribute) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-accent-purple" />
@@ -599,14 +649,23 @@ export function GoalsContent() {
     </form>
   );
 
-  const contributingGoal = showContribute
-    ? (goals.find((goal) => goal.id === showContribute) ?? null)
-    : null;
-  const contributingGoalAccountIds = contributingGoal ? getGoalAccountIds(contributingGoal) : [];
+  const contributionAccounts = authenticated ? (contributionSnapshot?.accounts ?? []) : accounts;
+  const contributingGoal = authenticated
+    ? (contributionSnapshot?.goal ?? null)
+    : showContribute
+      ? (goals.find((goal) => goal.id === showContribute) ?? null)
+      : null;
+  const contributingGoalAccountIds = authenticated
+    ? (contributionSnapshot?.links
+        .map((link) => link.account_id)
+        .filter((id) => contributionAccounts.some((account) => account.id === id)) ?? [])
+    : contributingGoal
+      ? getGoalAccountIds(contributingGoal)
+      : [];
   const contributeTargetAccount =
     contributingGoalAccountIds.length === 0
       ? null
-      : (accounts.find(
+      : (contributionAccounts.find(
           (a) =>
             a.id ===
             (contributeAccountId && contributingGoalAccountIds.includes(contributeAccountId)
@@ -614,7 +673,7 @@ export function GoalsContent() {
               : contributingGoalAccountIds[0])
         ) ?? null);
   const contributingSourceAccounts = contributeTargetAccount
-    ? accounts.filter(
+    ? contributionAccounts.filter(
         (a) =>
           a.id !== contributeTargetAccount.id && a.currency === contributeTargetAccount.currency
       )
@@ -644,8 +703,8 @@ export function GoalsContent() {
       )}
       {isAuthenticatedMainApp() && (
         <p className="mb-4 text-sm text-text-secondary">
-          Goal amounts earmark existing cash. Use Transfers to move money, then edit the goal
-          account amounts. Saved allocation plans are templates.
+          Goal amounts earmark existing cash. Add Contribution records a transfer you have made and
+          updates selected fixed earmarks together. Saved allocation plans are templates.
         </p>
       )}
       {goals.length === 0 ? (
@@ -875,6 +934,42 @@ export function GoalsContent() {
 
                 <button
                   onClick={() => {
+                    if (authenticated) {
+                      const observedAccounts = accounts
+                        .filter((account) => !account.archived && account.currency === "GBP")
+                        .map((account) => ({ ...account }));
+                      const observedLinks = getGoalAccountLinks(goal).map((link) => ({
+                        account_id: link.account_id,
+                        allocated_amount: link.allocated_amount ?? null,
+                      }));
+                      const destination = observedAccounts.find((account) =>
+                        observedLinks.some((link) => link.account_id === account.id)
+                      );
+                      if (!destination || goal.completed_at) return;
+                      const source =
+                        observedAccounts.find(
+                          (account) => account.id !== destination.id && account.name === "Personal"
+                        ) ?? observedAccounts.find((account) => account.id !== destination.id);
+                      setContributionSnapshot({
+                        goal: { ...goal },
+                        accounts: observedAccounts,
+                        links: observedLinks,
+                      });
+                      setContributeAccountId(destination.id);
+                      setContributeSourceAccountId(source?.id ?? "");
+                      setDecreaseSourceSplit(false);
+                      setIncreaseDestSplit(
+                        observedLinks.some(
+                          (link) =>
+                            link.account_id === destination.id && link.allocated_amount !== null
+                        )
+                      );
+                      setContributionDate(londonCivilDate());
+                      setContributeAmount("");
+                      setContributeError("");
+                      setShowContribute(goal.id);
+                      return;
+                    }
                     const targetIds = getGoalAccountIds(goal);
                     const defaultTargetId = targetIds[0] ?? "";
                     const targetAccount = accounts.find((a) => a.id === defaultTargetId);
@@ -901,17 +996,25 @@ export function GoalsContent() {
                     setContributeSourceAccountId(defaultSource?.id ?? "");
                     setContributeError("");
                   }}
-                  disabled={isAuthenticatedMainApp() || linkedAccountIds.length === 0}
+                  disabled={
+                    authenticated
+                      ? Boolean(goal.completed_at) ||
+                        !getGoalAccountLinks(goal).some((link) =>
+                          accounts.some(
+                            (account) =>
+                              account.id === link.account_id &&
+                              !account.archived &&
+                              account.currency === "GBP"
+                          )
+                        )
+                      : linkedAccountIds.length === 0
+                  }
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border-subtle px-4 py-2 text-sm text-text-primary transition hover:border-accent-blue hover:text-accent-blue"
-                  aria-label="Add"
-                  title="Add"
+                  aria-label={authenticated ? "Add Contribution" : "Add"}
+                  title="Add Contribution"
                 >
                   <Plus className="h-4 w-4" />
-                  {isAuthenticatedMainApp()
-                    ? "Use Transfers, then edit earmarks"
-                    : linkedAccountIds.length === 0
-                      ? "Link accounts first"
-                      : "Add Contribution"}
+                  {linkedAccountIds.length === 0 ? "Link accounts first" : "Add Contribution"}
                 </button>
               </div>
             );
@@ -947,6 +1050,7 @@ export function GoalsContent() {
       <Modal
         open={showContribute !== null}
         onClose={() => {
+          if (contributionPending.current) return;
           setShowContribute(null);
           setContributeAccountId("");
           setContributeSourceAccountId("");
@@ -955,7 +1059,13 @@ export function GoalsContent() {
         title="Add Contribution"
       >
         <div className="space-y-4">
-          {contributingGoalAccountIds.length > 1 && (
+          {authenticated && (
+            <p className="text-xs text-text-secondary">
+              Record a transfer you have already made and update selected fixed earmarks in one
+              save. This does not move money at your bank or add external money.
+            </p>
+          )}
+          {(authenticated || contributingGoalAccountIds.length > 1) && (
             <div>
               <label
                 className="mb-1 block text-xs font-medium text-text-secondary"
@@ -964,24 +1074,36 @@ export function GoalsContent() {
                 Contribute To
               </label>
               <select
+                disabled={saving}
                 value={contributeAccountId}
                 onChange={(e) => {
                   const nextTargetId = e.target.value;
-                  const nextTargetAccount = accounts.find((a) => a.id === nextTargetId);
+                  if (authenticated) {
+                    const source = contributionAccounts.find(
+                      (account) => account.id !== nextTargetId
+                    );
+                    setContributeAccountId(nextTargetId);
+                    setContributeSourceAccountId(source?.id ?? "");
+                    setDecreaseSourceSplit(false);
+                    setIncreaseDestSplit(fixedContributionLink(nextTargetId));
+                    setContributeError("");
+                    return;
+                  }
+                  const nextTargetAccount = contributionAccounts.find((a) => a.id === nextTargetId);
                   const nextDefaultSource = nextTargetAccount
-                    ? accounts.find(
+                    ? contributionAccounts.find(
                         (a) =>
                           a.id !== nextTargetId &&
                           a.currency === nextTargetAccount.currency &&
                           a.name === "Personal"
                       ) ||
-                      accounts.find(
+                      contributionAccounts.find(
                         (a) =>
                           a.id !== nextTargetId &&
                           a.currency === nextTargetAccount.currency &&
                           a.type === "checking"
                       ) ||
-                      accounts.find(
+                      contributionAccounts.find(
                         (a) => a.id !== nextTargetId && a.currency === nextTargetAccount.currency
                       )
                     : null;
@@ -993,7 +1115,7 @@ export function GoalsContent() {
                 id="goals-field-4"
               >
                 {contributingGoalAccountIds.map((accountId) => {
-                  const account = accounts.find((a) => a.id === accountId);
+                  const account = contributionAccounts.find((a) => a.id === accountId);
                   if (!account) return null;
                   return (
                     <option key={accountId} value={accountId}>
@@ -1006,8 +1128,11 @@ export function GoalsContent() {
           )}
           {contributeTargetAccount && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-text-secondary">
-                Source Account
+              <label
+                htmlFor="contribution-source"
+                className="mb-1 block text-xs font-medium text-text-secondary"
+              >
+                Source account
               </label>
               {contributingSourceAccounts.length === 0 ? (
                 <p className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-2.5 text-xs text-yellow-400">
@@ -1016,9 +1141,12 @@ export function GoalsContent() {
                 </p>
               ) : (
                 <select
+                  disabled={saving}
+                  id="contribution-source"
                   value={contributeSourceAccountId}
                   onChange={(e) => {
                     setContributeSourceAccountId(e.target.value);
+                    if (authenticated) setDecreaseSourceSplit(false);
                     setContributeError("");
                   }}
                   className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary outline-none focus:border-accent-purple"
@@ -1041,6 +1169,7 @@ export function GoalsContent() {
               Amount
             </label>
             <input
+              disabled={saving}
               type="number"
               step="0.01"
               value={contributeAmount}
@@ -1053,11 +1182,35 @@ export function GoalsContent() {
               id="goals-field-5"
             />
           </div>
+          {authenticated && (
+            <div>
+              <label
+                htmlFor="contribution-date"
+                className="mb-1 block text-xs font-medium text-text-secondary"
+              >
+                Contribution date
+              </label>
+              <input
+                id="contribution-date"
+                type="date"
+                value={contributionDate}
+                disabled={saving}
+                onChange={(event) => {
+                  setContributionDate(event.target.value);
+                  setContributeError("");
+                }}
+                className="w-full rounded-xl border border-border-subtle bg-bg-elevated px-4 py-2.5 text-sm text-text-primary"
+              />
+            </div>
+          )}
           <div className="space-y-2 rounded-xl border border-border-subtle bg-bg-elevated p-3">
             <p className="text-xs font-medium text-text-secondary">Split Adjustments</p>
             <label className="flex items-center gap-2 text-xs text-text-primary">
               <input
                 type="checkbox"
+                disabled={
+                  saving || (authenticated && !fixedContributionLink(contributeSourceAccountId))
+                }
                 checked={decreaseSourceSplit}
                 onChange={(e) => setDecreaseSourceSplit(e.target.checked)}
                 className="h-4 w-4 rounded border-border-subtle accent-accent-purple"
@@ -1067,32 +1220,47 @@ export function GoalsContent() {
             <label className="flex items-center gap-2 text-xs text-text-primary">
               <input
                 type="checkbox"
+                disabled={saving || (authenticated && !fixedContributionLink(contributeAccountId))}
                 checked={increaseDestSplit}
                 onChange={(e) => setIncreaseDestSplit(e.target.checked)}
                 className="h-4 w-4 rounded border-border-subtle accent-accent-purple"
               />
               Increase destination account allocation
             </label>
+            {authenticated && (
+              <p className="text-[11px] text-text-secondary">
+                Only fixed earmarks can be adjusted. Automatic allocations follow available cash and
+                remain automatic. Earmarks do not add cash or count the transfer twice.
+              </p>
+            )}
             {contributeAmount && parseFloat(contributeAmount) > 0 && (
               <p className="text-[11px] text-text-secondary">
                 Preview: transfer{" "}
-                {formatMoney(
-                  parseFloat(contributeAmount) || 0,
-                  contributeTargetAccount?.currency ?? baseCurrency
-                )}
-                {decreaseSourceSplit ? " · source split -" + (contributeAmount || "0") : ""}
-                {increaseDestSplit ? " · dest split +" + (contributeAmount || "0") : ""}
+                {showBalances
+                  ? formatMoney(
+                      parseFloat(contributeAmount) || 0,
+                      contributeTargetAccount?.currency ?? baseCurrency
+                    )
+                  : HIDDEN_BALANCE}
+                {decreaseSourceSplit
+                  ? " · source split -" + (showBalances ? contributeAmount || "0" : HIDDEN_BALANCE)
+                  : ""}
+                {increaseDestSplit
+                  ? " · dest split +" + (showBalances ? contributeAmount || "0" : HIDDEN_BALANCE)
+                  : ""}
               </p>
             )}
           </div>
           {contributeError && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
+            <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">
               {contributeError}
             </p>
           )}
           <div className="flex gap-3">
             <button
+              disabled={saving}
               onClick={() => {
+                if (contributionPending.current) return;
                 setShowContribute(null);
                 setContributeAccountId("");
                 setContributeSourceAccountId("");
