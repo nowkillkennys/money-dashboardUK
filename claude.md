@@ -18,7 +18,7 @@ The authenticated main app runs locally at http://127.0.0.1:13022/ using the app
 
 Overview, accounts, income, expenses, credit cards and reports read the original-shaped per-user ledger. Native bank/card/transaction commands, shared card identities, linked purchase expenses and atomic bank-funded repayments use one financial authority. All Debts and PDF review reconcile against the same anchors and payment/charge history. PDF extraction produces typed observations for explicit review; it does not silently replace balances or retain full card numbers/names. Repeat imports and command retries are protected against duplicate effects.
 
-Goals/earmarks/allocation templates, subscription schedules, safe settings, holdings and record-only dividend WRITE adapters are now connected to the same journal/receipts. See docs/uk/main-feature-continuation.md for conservative no-cash-posting semantics, valuation limits and verification. Atomic contributions/automatic allocation, investment trade/cash posting, correction/refund flows, broader duplicate reconciliation and automatic snapshots remain; do not describe this as a complete migration.
+Goals/earmarks/allocation templates, subscription schedules, safe settings, holdings and record-only dividend WRITE adapters are now connected to the same journal/receipts. See docs/uk/main-feature-continuation.md for conservative no-cash-posting semantics, valuation limits and verification. Contributions, linked refunds, duplicate reconciliation and daily overview snapshots have since been restored; see the later restoration sections. Automatic allocation remains disabled. Live investment prices and cash-settled trading are intentionally out of scope by user decision, not migration repairs.
 
 Current restoration/testing status: Goal contributions and individual card-history deletion are reconnected with compilation/build and source inspection only; runtime tests are explicitly paused until the user requests them. See docs/uk/goal-contribution-restoration.md and docs/uk/disconnected-actions.md. The following test counts are historical for the preceding repayment-edit release, not verification of the new goal contribution command.
 
@@ -102,3 +102,7 @@ Linked bank/card refunds, account duplicate reconciliation and daily overview sn
 ## Atomic income allocations
 
 Authenticated income splits now use one transaction.create command with allocations and observed account_versions. Income, transfers and receipt commit together; server validates active owned GBP accounts, exact penny totals and distinct destinations. Refund/update paths cannot carry allocations. No schema changes. Saved templates remain manual prefills. See docs/uk/income-allocation-saving.md. Test pause persists; do not infer runtime verification from build/typecheck.
+
+## Investment scope decision — 26 November 2026
+
+The user agreed to leave live investment prices and cash-settled trading out of scope. Preserve manual holdings, cost basis and record-only dividend history. Do not count provider valuation/trade settlement as broken or disconnected features, or reconnect providers to implement them. The authenticated Investments screen describes manual tracking; missing market values still mean net worth cannot be considered complete.

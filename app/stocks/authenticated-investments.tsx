@@ -30,12 +30,12 @@ export function AuthenticatedInvestments() {
   const accounts = data.accounts.filter((a) => a.type === "investing" && a.currency === "GBP");
   return (
     <div className="min-w-0 space-y-6 [&_button]:min-h-11 [&_button]:rounded-xl [&_button]:border [&_button]:border-[var(--border-subtle)] [&_button]:px-4 [&_button]:py-2 [&_button]:font-medium [&_button:hover]:bg-[var(--bg-elevated)] [&_button:disabled]:opacity-50 [&_label]:grid [&_label]:gap-2 [&_input]:min-w-0 [&_input]:rounded-xl [&_input]:border [&_input]:border-[var(--border-subtle)] [&_input]:bg-[var(--bg-secondary)] [&_input]:p-3 [&_select]:min-w-0 [&_select]:max-w-full [&_select]:rounded-xl [&_select]:border [&_select]:border-[var(--border-subtle)] [&_select]:p-3 [&_th]:px-4 [&_th]:py-3 [&_td]:px-4 [&_td]:py-4">
-      <PageHeader title="Investments" description="Positions, cost basis and dividend history" />
+      <PageHeader title="Investments" description="Manual holdings, cost basis and dividend history" />
       <p className="money-surface p-5 text-sm leading-6 text-text-secondary" role="status">
-        Market prices are unavailable. Cost basis records what you invested; current value and
-        investment gains are unknown. Investment purchases do not move tracked cash. Dividends are
-        history only: they do not add bank cash or automatically change shares, including when
-        marked reinvested.
+        Track holdings and dividends manually. Cost basis records what you invested; live prices,
+        current market values and trade settlement are not included. Changes to holdings do not move
+        tracked cash. Dividend records do not add bank cash or automatically change shares, including
+        when marked reinvested.
       </p>
       {(error || data.error) && <p role="alert">{error || data.error}</p>}
       <button
@@ -72,7 +72,7 @@ export function AuthenticatedInvestments() {
                   </td>
                   <td>{h.shares}</td>
                   <td>{money(Number(h.cost_basis))}</td>
-                  <td>Unavailable</td>
+                  <td>Not tracked</td>
                   <td>
                     <button
                       disabled={busy}
