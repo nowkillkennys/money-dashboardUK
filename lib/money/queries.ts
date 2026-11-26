@@ -1480,17 +1480,61 @@ export async function deleteCreditCardCharge(id: string) {
   if (error) throw error;
 }
 
+export interface CreditCardChargeUpdates {
+  date?: string;
+  amount?: number | string;
+  merchant?: string | null;
+  category?: string | null;
+  notes?: string | null;
+}
+
+export interface CreditCardChargeEditContext {
+  version?: number;
+  card_version?: number;
+  transaction_version?: number;
+  goal_id?: string | null;
+  exclude_from_monthly?: boolean;
+  personal_share_percent?: number;
+  shared_with?: string | null;
+}
+
 export async function updateCreditCardCharge(
   id: string,
-  updates: Partial<Omit<CreditCardCharge, "id" | "created_at" | "user_id">>
+  updates: CreditCardChargeUpdates,
+  context?: CreditCardChargeEditContext
 ) {
   if (isAuthenticatedMainApp()) {
-    return unavailableMainMutation();
+    return mainCommand("charge.update", {
+      id,
+      version: context?.version,
+      card_version: context?.card_version,
+      date: updates.date,
+      amount: updates.amount,
+      merchant: updates.merchant,
+      category: updates.category,
+      notes: updates.notes,
+      ...(context?.transaction_version !== undefined
+        ? {
+            transaction_version: context.transaction_version,
+            tx_overrides: {
+              goal_id: context.goal_id,
+              exclude_from_monthly: context.exclude_from_monthly,
+              personal_share_percent: context.personal_share_percent,
+              shared_with: context.shared_with,
+            },
+          }
+        : {}),
+    });
   }
-  if (isDemoModeRoute()) return demoUpdateCreditCardCharge(id, updates);
+  const { amount, ...otherUpdates } = updates;
+  const legacyUpdates = {
+    ...otherUpdates,
+    ...(amount !== undefined ? { amount: Number(amount) } : {}),
+  };
+  if (isDemoModeRoute()) return demoUpdateCreditCardCharge(id, legacyUpdates);
   const { data, error } = await supabase
     .from("money_credit_card_charges")
-    .update(updates)
+    .update(legacyUpdates)
     .eq("id", id)
     .select()
     .single();

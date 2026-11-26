@@ -6,7 +6,7 @@ import { validateRefund } from "@/lib/money/refunds";
 import { RefundExpensePicker } from "../components/refund-expense-picker";
 import { MonthlyExclusion } from "../components/monthly-exclusion";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { ExpenseShare } from "../components/expense-share";
 import { MerchantInput } from "../components/merchant-input";
 import { useMoneyData } from "../hooks/use-money-data";
@@ -52,7 +52,12 @@ import {
   computeCreditCardBalance,
   reorderCreditCards,
 } from "@/lib/money/queries";
-import type { CurrencyCode, CreditCard, CreditCardCharge } from "@/lib/money/database.types";
+import type {
+  CurrencyCode,
+  CreditCard,
+  CreditCardCharge,
+  Transaction,
+} from "@/lib/money/database.types";
 import { convertCurrency } from "@/lib/money/fx";
 import { format } from "date-fns";
 import { useBalanceVisibility } from "../balance-visibility-provider";
@@ -245,6 +250,12 @@ export function CreditCardsContent() {
   );
 
   // Inline edit charge state
+  const editChargeSaving = useRef(false);
+  const [editChargeSnapshot, setEditChargeSnapshot] = useState<{
+    charge: CreditCardCharge;
+    card?: CreditCard;
+    linked?: Transaction;
+  } | null>(null);
   const [editingChargeId, setEditingChargeId] = useState<string | null>(null);
   const [editChargeDate, setEditChargeDate] = useState("");
   const [editChargeAmount, setEditChargeAmount] = useState("");
@@ -615,6 +626,11 @@ export function CreditCardsContent() {
     const linked = transactions.find(
       (t) => t.id === charge.linked_transaction_id || t.linked_charge_id === charge.id
     );
+    setEditChargeSnapshot({
+      charge: { ...charge },
+      card: creditCards.find((card) => card.id === charge.card_id),
+      linked: linked ? { ...linked } : undefined,
+    });
     setEditChargeExcluded(linked?.exclude_from_monthly ?? false);
     setEditChargeGoalId(linked?.goal_id || "");
     setEditSharePercent(linked?.personal_share_percent ?? 100);
@@ -627,32 +643,42 @@ export function CreditCardsContent() {
   };
 
   const handleSaveEditCharge = async (id: string) => {
+    if (editChargeSaving.current) return;
+    const amt = Number(editChargeAmount);
+    if (!Number.isFinite(amt) || amt <= 0) throw new Error("Enter a valid amount");
+    if (!editChargeSnapshot || editChargeSnapshot.charge.id !== id)
+      throw new Error("Reopen this charge before saving.");
+    editChargeSaving.current = true;
     setSaving(true);
     try {
-      const amt = parseFloat(editChargeAmount);
-      if (isNaN(amt) || amt <= 0) return;
-      await updateCreditCardCharge(id, {
-        date: editChargeDate,
-        amount: amt,
-        merchant: editChargeMerchant || null,
-        category: editChargeCategory,
-        notes: editChargeNotes || null,
-      });
-      const linked = transactions.find(
-        (t) =>
-          t.linked_charge_id === id ||
-          t.id === creditCardCharges.find((c) => c.id === id)?.linked_transaction_id
+      const authenticated = isAuthenticatedMainApp();
+      const { charge, card, linked } = editChargeSnapshot;
+      const overrides = {
+        goal_id: editChargeGoalId || null,
+        exclude_from_monthly: editChargeExcluded,
+        personal_share_percent: editSharePercent,
+        shared_with: editSharedWith.trim() || null,
+      };
+      await updateCreditCardCharge(
+        id,
+        {
+          date: editChargeDate,
+          amount: authenticated ? editChargeAmount : amt,
+          merchant: editChargeMerchant || null,
+          category: editChargeCategory,
+          notes: editChargeNotes || null,
+        },
+        {
+          version: charge.version,
+          card_version: card?.version,
+          ...(linked ? { transaction_version: linked.version, ...overrides } : {}),
+        }
       );
-      if (linked)
-        await updateTransaction(linked.id, {
-          goal_id: editChargeGoalId || null,
-          exclude_from_monthly: editChargeExcluded,
-          personal_share_percent: editSharePercent,
-          shared_with: editSharedWith.trim() || null,
-        });
+      if (!authenticated && linked) await updateTransaction(linked.id, overrides);
       await refresh();
       setEditingChargeId(null);
     } finally {
+      editChargeSaving.current = false;
       setSaving(false);
     }
   };
@@ -1595,11 +1621,19 @@ export function CreditCardsContent() {
         open={!!editingChargeId}
         title="Edit Charge"
         saving={saving}
-        onClose={() => setEditingChargeId(null)}
+        onClose={() => {
+          if (!editChargeSaving.current) setEditingChargeId(null);
+        }}
         onSave={async () => {
           if (editingChargeId) await handleSaveEditCharge(editingChargeId);
         }}
       >
+        {isAuthenticatedMainApp() && (
+          <p className="text-sm text-text-secondary">
+            Changes to statement-included charges may need review in All Debts; reported statement
+            balances are retained.
+          </p>
+        )}
         <div className="grid gap-5 sm:grid-cols-2">
           <EditField label="Date">
             <input
@@ -1610,9 +1644,7 @@ export function CreditCardsContent() {
               onChange={(event) => setEditChargeDate(event.target.value)}
             />
           </EditField>
-          <EditField
-            label={`Amount (${creditCards.find((card) => card.id === creditCardCharges.find((charge) => charge.id === editingChargeId)?.card_id)?.currency || baseCurrency})`}
-          >
+          <EditField label={`Amount (${editChargeSnapshot?.card?.currency || baseCurrency})`}>
             <input
               aria-label="Amount"
               type="number"
@@ -1641,11 +1673,7 @@ export function CreditCardsContent() {
           </EditField>
           <EditField label="Card">
             <div className="rounded-xl bg-bg-elevated px-3 py-3 text-sm text-text-primary">
-              {creditCards.find(
-                (card) =>
-                  card.id ===
-                  creditCardCharges.find((charge) => charge.id === editingChargeId)?.card_id
-              )?.name || "Credit card"}
+              {editChargeSnapshot?.card?.name || "Credit card"}
             </div>
           </EditField>
         </div>
@@ -1665,13 +1693,7 @@ export function CreditCardsContent() {
             onChange={(event) => setEditChargeNotes(event.target.value)}
           />
         </EditField>
-        {transactions.some(
-          (tx) =>
-            tx.linked_charge_id === editingChargeId ||
-            tx.id ===
-              creditCardCharges.find((charge) => charge.id === editingChargeId)
-                ?.linked_transaction_id
-        ) && (
+        {editChargeSnapshot?.linked && (
           <section className="transaction-editor-options">
             <h3 className="text-sm font-semibold text-text-primary">Spending preferences</h3>
             <ExpenseShare
@@ -1680,13 +1702,7 @@ export function CreditCardsContent() {
               sharedWith={editSharedWith}
               onSharedWithChange={setEditSharedWith}
               amount={Number(editChargeAmount)}
-              currency={
-                creditCards.find(
-                  (card) =>
-                    card.id ===
-                    creditCardCharges.find((charge) => charge.id === editingChargeId)?.card_id
-                )?.currency || baseCurrency
-              }
+              currency={editChargeSnapshot?.card?.currency || baseCurrency}
               excluded={editChargeExcluded}
             />
             <MonthlyExclusion checked={editChargeExcluded} onChange={setEditChargeExcluded} />

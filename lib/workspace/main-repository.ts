@@ -1,3 +1,4 @@
+import { chargeEditFields, executeChargeEditCommand } from "./main-charge-edit";
 import {
   executeSubscriptionPaymentCommand,
   subscriptionPaymentFields,
@@ -107,6 +108,7 @@ export async function executeMainCommand(
 ): Promise<{ id: string; version: number; row: any }> {
   const common = ["action", "id", "version", "currency"];
   const allowed: Record<string, string[]> = {
+    charge: chargeEditFields,
     ...orderingFields,
     ...goalFields,
     ...preferenceFields,
@@ -197,6 +199,7 @@ export async function executeMainCommand(
     if (input.currency && input.currency !== "GBP")
       throw new HttpError(400, "This workspace uses GBP");
     const extension =
+      (await executeChargeEditCommand(c, owner, input)) ??
       (await executeSubscriptionPaymentCommand(c, owner, input)) ??
       (await executeGoalCommand(c, owner, input)) ??
       (await executePreferenceCommand(c, owner, input)) ??

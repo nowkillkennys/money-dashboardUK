@@ -212,6 +212,7 @@ export interface CreditCard {
 }
 
 export interface CreditCardCharge {
+  version?: number;
   id: string;
   user_id: string;
   card_id: string;
