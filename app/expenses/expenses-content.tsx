@@ -119,12 +119,13 @@ export function ExpensesContent() {
   const [editGoalId, setEditGoalId] = useState<string>("");
   const [formError, setFormError] = useState("");
 
+  const expenseCategories = settings?.expense_categories;
   const autoCategorize = useCallback(async (merchantName: string, notesText?: string) => {
     if (!merchantName.trim() && !(notesText?.trim())) return;
     if ((merchantName + (notesText || "")).trim().length < 2) return;
     setAutoCategorizePending(true);
     try {
-      const cats = settings?.expense_categories ?? [];
+      const cats = expenseCategories ?? [];
       const res = await fetch("/api/ai/categorize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -136,7 +137,7 @@ export function ExpensesContent() {
     } catch { /* silent */ } finally {
       setAutoCategorizePending(false);
     }
-  }, [settings?.expense_categories]);
+  }, [expenseCategories]);
 
   /* Sorting */
   const [sortKey, setSortKey] = useState<"date" | "amount" | "category" | "merchant" | "account">("date");
@@ -167,14 +168,14 @@ export function ExpensesContent() {
   }, [transactions, creditCardCharges, filterBankId, filterCategory, filterMonth, search]);
 
   const categories = useMemo(() => {
-    const loaded = normalizeCategories(settings?.expense_categories ?? []);
+    const loaded = normalizeCategories(expenseCategories ?? []);
     const list = loaded.length > 0 ? loaded : DEFAULT_CATEGORIES;
     return [...list].sort((a, b) => {
       if (a === "Other") return 1;
       if (b === "Other") return -1;
       return a.localeCompare(b);
     });
-  }, [settings?.expense_categories]);
+  }, [expenseCategories]);
 
   useEffect(() => {
     if (!categories.includes(category)) {

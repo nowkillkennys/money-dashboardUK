@@ -56,6 +56,7 @@ import { CARD_COLORS, cardColorClasses } from "../components/card-colors";
 
 export function AccountsContent() {
   const { accounts, transactions, balances, creditCards, creditCardCharges, creditCardPayments, settings, loading, refresh } = useMoneyData();
+  const [orderedAccounts, setOrderedAccounts] = useState<Account[]>([]);
   // Mirror server-provided order locally so drag-end can update optimistically.
   useEffect(() => { setOrderedAccounts(accounts); }, [accounts]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -104,7 +105,6 @@ export function AccountsContent() {
   const [editColor, setEditColor] = useState<string | null>(null);
   const [editArchived, setEditArchived] = useState(false);
   const [editError, setEditError] = useState("");
-  const [orderedAccounts, setOrderedAccounts] = useState<Account[]>([]);
 
   // Transfer state
   const [showTransfer, setShowTransfer] = useState(false);
@@ -150,7 +150,7 @@ export function AccountsContent() {
       }
     } catch { /* ignore */ }
     finally { setLedgerLoading(false); }
-  }, []);
+  }, [setLedgerAccountId, setLedgerLoading, setLedgerTxs]);
 
   const [txSortKey, setTxSortKey] = useState<"date" | "from" | "to" | "amount">("date");
   const [txSortDir, setTxSortDir] = useState<"asc" | "desc">("desc");

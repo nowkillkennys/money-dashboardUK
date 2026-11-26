@@ -70,12 +70,13 @@ export function VoiceTransaction({ accounts, creditCards, settings, refresh, dem
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromAccountId, toAccountId, isCrossCurrencyTransfer]);
 
+  const expenseCategories = settings?.expense_categories;
   const categories = useMemo(
     () =>
-      settings?.expense_categories?.length
-        ? settings.expense_categories
+      expenseCategories?.length
+        ? expenseCategories
         : ["Bills", "Food", "Fun", "Health", "Personal Care", "Rent", "Transport", "Other"],
-    [settings?.expense_categories]
+    [expenseCategories]
   );
   const baseCurrency = settings?.base_currency ?? "GBP";
 
